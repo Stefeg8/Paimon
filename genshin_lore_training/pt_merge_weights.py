@@ -4,7 +4,7 @@ from peft import PeftModel, PeftConfig
 
 # Define the base model (replace with the correct model path or Hugging Face model name)
 base_model_name = "models"
-lora_weights_path = "mistral_7b_arXiv"  # Path to your LoRA weights
+lora_weights_path = "mistral_7b_genshin_v1"  # Path to your LoRA weights
 output_model_dir = "./merged_model"  # Directory to save the merged model
 
 # Load the base model
