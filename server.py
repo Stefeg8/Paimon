@@ -6,6 +6,7 @@ from TTS.api import TTS
 import torch
 from gpt4all import GPT4All
 import whisper
+from langchain.chains.conversation.memory import ConversationSummaryMemory
 
 #TODO
 # Add memory for TTS
@@ -24,7 +25,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 transcription_model = whisper.load_model("base").to("cuda")
 
-# Initialize TTS (Assuming Coqui TTS is already set up)
+# Initialize TTS 
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
 
 def load_templates(filename):
@@ -58,16 +59,16 @@ def generate_response(user_input):
         # Change temperature(temp) for more creative responses. Top_k, top_p, min_p, and repeat_penalty are all hyperparameters
         # Read documentation for further reference. 
         # https://docs.gpt4all.io/gpt4all_python/ref.html#gpt4all.gpt4all.GPT4All.generate
-        response = model.generate(user_input, max_tokens=450, temp=1.1, top_k = 60, top_p = 0.85, min_p = 0.045, repeat_penalty = 2.1, n_batch=16)
+        response = model.generate(user_input, max_tokens=450, temp=1.1, top_k = 80, top_p = 0.85, min_p = 0.045, repeat_penalty = 2.1, n_batch=16)
         response_automated = f"{response}"
         return response_automated
     
-# Function to generate TTS and send back
+# Function to generate TTS and send back audio
 def generate_and_send_tts(client_socket, text):
     tts_text = generate_response(text)
     print(f"Generating TTS for: {tts_text}")
     
-    # Generate TTS audio (you can also customize sampling rate here)
+    # Generate TTS audio 
     wav_bytes = tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav","IMG_1310.wav","IMG_1313.wav","IMG_1314.wav","IMG_1315.wav"], language="en", file_path="balsshd.wav")
 
     # Open the wav file and send it back
@@ -80,7 +81,7 @@ def generate_and_send_tts(client_socket, text):
         client_socket.sendall(data)
     
     wf.close()
-    os.remove('response.wav')  # Clean up the file
+    os.remove('response.wav')  # Clean up
 
 def handle_client(client_socket):
     print("Client connected")
@@ -102,9 +103,8 @@ def handle_client(client_socket):
         print("Audio received, passing it through LLM...")
         wf.close()
 
-        # Example: Pass the received audio through an LLM (This is where you'd use transcription)
         AUDIO_FILE = "received_audio.wav"
-        transcribed_text = transcription_model.transcribe(AUDIO_FILE)  # Replace with real transcription logic
+        transcribed_text = transcription_model.transcribe(AUDIO_FILE)
 
         # Send back a TTS response
         generate_and_send_tts(client_socket, transcribed_text)
