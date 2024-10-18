@@ -6,6 +6,7 @@ from TTS.api import TTS
 import time
 import numpy as np
 import torch
+import struct
 from gpt4all import GPT4All
 import whisper
 from langchain.chains.conversation.memory import ConversationSummaryMemory
@@ -88,6 +89,14 @@ def generate_and_send_tts(client_socket, text):
     wf.close()
     os.remove('response.wav')  # Clean up
 
+def calculate_rms(data):
+    # Unpack the byte data into an array of integers
+    int_data = np.frombuffer(data, dtype=np.int16)
+    
+    # Calculate RMS
+    rms = np.sqrt(np.mean(int_data ** 2))
+    return rms
+
 def handle_client(client_socket):
     print("Client connected")
 
@@ -105,10 +114,37 @@ def handle_client(client_socket):
             data = client_socket.recv(CHUNK_SIZE)
             
             if data:
+                # Check audio levels
+                rms = calculate_rms(data)
+                print(f"Current RMS Level: {rms}")
+
                 # Reset silence timer as long as data is being received
                 silence_duration = 0
                 start_time = time.time()
                 wf.writeframes(data)
+
+                # Check if RMS level is above the silence threshold
+                if rms < SILENCE_THRESHOLD:
+                    print("Silence detected, processing audio...")
+                    wf.close()
+                    
+                    # Process the audio file
+                    AUDIO_FILE = "received_audio.wav"
+                    transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+
+                    # Send back a TTS response
+                    generate_and_send_tts(client_socket, transcribed_text)
+
+                    # Reopen the file for further incoming audio data
+                    wf = wave.open('received_audio.wav', 'wb')
+                    wf.setnchannels(CHANNELS)
+                    wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
+                    wf.setframerate(RATE)
+
+                    # Reset silence timer and start listening for new speech
+                    silence_duration = 0
+                    start_time = time.time()
+
             else:
                 # No data received
                 silence_duration = time.time() - start_time
