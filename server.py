@@ -3,6 +3,8 @@ import wave
 import pyaudio
 import os
 from TTS.api import TTS
+import time
+import numpy as np
 import torch
 from gpt4all import GPT4All
 import whisper
@@ -20,6 +22,9 @@ CHUNK_SIZE = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000 
+
+SILENCE_THRESHOLD = 500  # Change this value as we see fit
+SILENCE_TIMEOUT = 1
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -86,30 +91,52 @@ def generate_and_send_tts(client_socket, text):
 def handle_client(client_socket):
     print("Client connected")
 
-    # Open a file to store the incoming audio
+    # File to store data
     wf = wave.open('received_audio.wav', 'wb')
     wf.setnchannels(CHANNELS)
     wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
     wf.setframerate(RATE)
 
+    silence_duration = 0
+    start_time = time.time()
+
     try:
         while True:
             data = client_socket.recv(CHUNK_SIZE)
-            if not data:
-                break  # No more data, client closed connection
+            
+            if data:
+                # Reset silence timer as long as data is being received
+                silence_duration = 0
+                start_time = time.time()
+                wf.writeframes(data)
+            else:
+                # No data received
+                silence_duration = time.time() - start_time
 
-            wf.writeframes(data)
-        
-        print("Audio received, passing it through LLM...")
-        wf.close()
+                # Check if silence has been long enough to consider end of speech
+                if silence_duration >= SILENCE_TIMEOUT:
+                    print("Silence detected, processing audio...")
+                    wf.close()
+                    
+                    # Process the audio file
+                    AUDIO_FILE = "received_audio.wav"
+                    transcribed_text = transcription_model.transcribe(AUDIO_FILE)
 
-        AUDIO_FILE = "received_audio.wav"
-        transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+                    # Send back a TTS response
+                    generate_and_send_tts(client_socket, transcribed_text)
 
-        # Send back a TTS response
-        generate_and_send_tts(client_socket, transcribed_text)
+                    # Reopen the file for further incoming audio data
+                    wf = wave.open('received_audio.wav', 'wb')
+                    wf.setnchannels(CHANNELS)
+                    wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
+                    wf.setframerate(RATE)
+
+                    # Reset silence timer and start listening for new speech
+                    silence_duration = 0
+                    start_time = time.time()
 
     finally:
+        wf.close()
         client_socket.close()
         print("Client disconnected")
 
