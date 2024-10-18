@@ -11,6 +11,6 @@ Using YOLOv10, we achieve vision capabilities for our drone, allowing it to safe
 # Finetuning
 To finetune the model, we scraped the Genshin wiki for information about characters and the lore behind the game. By training the model on different parts of the game, we were able to give it a complete comprehension of how to give advice like Paimon. 
 
-We processed our data and utilized this guide([https://www.datacamp.com/tutorial/mistral-7b-tutorial]) on how to finetune our model. 
+We processed our data and used the hyperparameters seen in our train.py script to finetune the model. 
 
 We merged weights and utilized llama.cpp to convert our weights to a gguf file.
