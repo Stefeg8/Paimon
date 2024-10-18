@@ -35,7 +35,6 @@ WANDB_KEY = os.getenv("WANDB_KEY")
 
 # Log in to Hugging Face and Weights & Biases
 #!huggingface-cli login --token $HUGGINGFACE_TOKEN
-# 402cfd8da726c5f814c84b212c6cdd87a1666830
 wandb.login(key=WANDB_KEY)
 run = wandb.init(
     project='Fine-tuning Mistral 7B - Genshin Lore',
