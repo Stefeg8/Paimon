@@ -23,7 +23,7 @@ PORT = 8080
 
 # Audio settings
 CHUNK_SIZE = 1024
-FORMAT = pyaudio.paInt16
+FORMAT = pyaudio.paInt16 #jiayou!!!!!
 CHANNELS = 1
 RATE = 16000 
 
