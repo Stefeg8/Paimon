@@ -3,6 +3,7 @@ import wave
 import pyaudio
 import os
 from TTS.api import TTS
+from TTS.utils.realtime import RealtimeTTS
 import time
 import numpy as np
 import torch
@@ -10,6 +11,7 @@ import struct
 from gpt4all import GPT4All
 import whisper
 from langchain.chains.conversation.memory import ConversationSummaryMemory
+from RealtimeTTS import CoquiEngine, TextToAudioStream
 
 #TODO
 # Add memory for TTS
@@ -38,6 +40,10 @@ transcription_model = whisper.load_model("base").to("cuda")
 
 # Initialize TTS 
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+
+# Initialize streaming TTS
+engine = CoquiEngine()
+stream = TextToAudioStream(engine)
 
 def load_templates(filename):
     templates = {}
@@ -73,6 +79,26 @@ def generate_response(user_input):
         response = model.generate(user_input, max_tokens=450, temp=1.1, top_k = 80, top_p = 0.85, min_p = 0.045, repeat_penalty = 2.1, n_batch=16)
         response_automated = f"{response}"
         return response_automated
+
+def generate_and_stream_tts(client_socket, text):
+    tts_text = generate_response(text)
+    print(f"Generating TTS for: {tts_text}")
+    
+    stream.feed(tts_text)
+
+    def audio_stream_generator():
+        while True:
+            audio_chunk = stream.get_next_chunk()  # find documentation to get next chunk. might be cooked
+            if audio_chunk is None:
+                break  
+            yield audio_chunk
+
+    # Stream and send the generated audio data chunk by chunk
+    for audio_chunk in audio_stream_generator():
+        # Send audio chunk
+        client_socket.sendall(audio_chunk)
+    
+    print("Finished streaming audio.")
     
 # Function to generate TTS and send back audio
 def generate_and_send_tts(client_socket, text):
@@ -80,8 +106,9 @@ def generate_and_send_tts(client_socket, text):
     print(f"Generating TTS for: {tts_text}")
     
     # Generate TTS audio 
+    # Here when we generate TTS audio we can 
     wav_bytes = tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav","IMG_1310.wav","IMG_1313.wav","IMG_1314.wav","IMG_1315.wav"], language="en", file_path="balsshd.wav")
-
+    
     # Open the wav file and send it back
     wf = wave.open('response.wav', 'rb')
     
