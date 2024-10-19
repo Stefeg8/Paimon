@@ -13,6 +13,9 @@ from langchain.chains.conversation.memory import ConversationSummaryMemory
 
 #TODO
 # Add memory for TTS
+# Change LLM loading to transformer based
+# Load models with fp16 or q8 quantization(LLM is already quantized, no need to do that one)
+# YOLOv10 is fine and already uses minimal resources
 
 # Configure the server
 HOST = '0.0.0.0' 
