@@ -14,11 +14,16 @@ from langchain.chains.conversation.memory import ConversationSummaryMemory
 from RealtimeTTS import CoquiEngine, TextToAudioStream
 
 #TODO
+# Very important: 
+# We're moving over to Ministral 3b or 8b. Check for quantized models, or load using fp16 or q8 quantization.
+# We can use 8b if we have quantized versions of the models
+# https://huggingface.co/mistralai/Ministral-8B-Instruct-2410
+
 # Add memory for TTS
 # Change LLM loading to transformer based
 # Load models with fp16 or q8 quantization(LLM is already quantized, no need to do that one)
 # YOLOv10 is fine and already uses minimal resources
-# VERY IMPORTANT: Use xtts_v2 streaming and stream the audio packets back as they're being generated
+# WIP: Use xtts_v2 streaming and stream the audio packets back as they're being generated
 # which will hopefully decrease latency
 
 # Configure the server
@@ -90,7 +95,7 @@ def generate_and_stream_tts(client_socket, text):
         while True:
             audio_chunk = stream.get_next_chunk()  # find documentation to get next chunk. might be cooked
             if audio_chunk is None:
-                break  
+                break   
             yield audio_chunk
 
     # Stream and send the generated audio data chunk by chunk
