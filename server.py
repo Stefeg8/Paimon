@@ -76,7 +76,7 @@ prompt_template = 'Traveler: {0}\nPaimon: '
 
 
 def generate_response(user_input):
-    with model.chat_session(system_template, prompt_template):
+    with model.chat_session(system_template, prompt_template): # start this as the server boots up
         # Can force lower max token count(i.e. 100) so that responses are shorter and are faster to generate
         # Change temperature(temp) for more creative responses. Top_k, top_p, min_p, and repeat_penalty are all hyperparameters
         # Read documentation for further reference. 
