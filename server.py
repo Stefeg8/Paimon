@@ -28,7 +28,7 @@ from RealtimeTTS import CoquiEngine, TextToAudioStream
 
 # Configure the server
 HOST = '0.0.0.0' 
-PORT = 8080     
+PORT = 42069   
 
 # Audio settings
 CHUNK_SIZE = 1024
@@ -112,7 +112,7 @@ def generate_and_send_tts(client_socket, text):
     
     # Generate TTS audio 
     # Here when we generate TTS audio we can 
-    wav_bytes = tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav","IMG_1310.wav","IMG_1313.wav","IMG_1314.wav","IMG_1315.wav"], language="en", file_path="balsshd.wav")
+    tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav","IMG_1310.wav","IMG_1313.wav","IMG_1314.wav","IMG_1315.wav"], language="en", file_path="response.wav")
     
     # Open the wav file and send it back
     wf = wave.open('response.wav', 'rb')
@@ -124,7 +124,7 @@ def generate_and_send_tts(client_socket, text):
         client_socket.sendall(data)
     
     wf.close()
-    os.remove('response.wav')  # Clean up
+    os.remove('response.wav')  
 
 def calculate_rms(data):
     # Unpack the byte data into an array of integers
