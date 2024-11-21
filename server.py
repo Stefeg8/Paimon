@@ -3,7 +3,7 @@ import wave
 import pyaudio
 import os
 from TTS.api import TTS
-from TTS.utils.realtime import RealtimeTTS
+#from TTS.utils.realtime import RealtimeTTS
 import time
 import numpy as np
 import torch
@@ -168,6 +168,7 @@ def handle_client(client_socket):
                     # Process the audio file
                     AUDIO_FILE = "received_audio.wav"
                     transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+                    print(f"Transcription: " + transcribed_text["text"])
 
                     # Send back a TTS response
                     generate_and_send_tts(client_socket, transcribed_text)

@@ -31,7 +31,7 @@ def record_and_send_audio():
                     channels=CHANNELS, 
                     dtype='int16'
                 )
-                sd.wait()  # Wait until the audio is fully recorded
+                sd.wait()  # W]ait until the audio is fully recorded
                 
                 # Convert audio data to bytes
                 audio_bytes = audio_chunk.tobytes()
@@ -40,6 +40,7 @@ def record_and_send_audio():
                 for i in range(0, len(audio_bytes), BUFFER_SIZE):
                     packet = audio_bytes[i:i + BUFFER_SIZE]
                     client_socket.sendall(packet)
+                receive_and_play_audio(client_socket)
         
         except KeyboardInterrupt:
             print("\nStreaming stopped.")
@@ -48,6 +49,35 @@ def record_and_send_audio():
         finally:
             print("Closing connection.")
             client_socket.close()
+
+def receive_and_play_audio(client_socket):
+    """Receives audio data from the server and plays it in real time."""
+    audio_buffer = bytearray()  # Buffer to accumulate audio data
+    
+    try:
+        # Continuously receive audio data from the server
+        while True:
+            data = client_socket.recv(BUFFER_SIZE)
+            if not data:
+                break  # If no data is received, exit the loop
+            
+            # Append the received data to the buffer
+            audio_buffer.extend(data)
+
+            # If the buffer has enough data for a playback chunk
+            if len(audio_buffer) >= FS * 2 * CHANNELS:
+                # Convert the buffer into a NumPy array for playback
+                audio_data = np.frombuffer(audio_buffer[:FS * 2 * CHANNELS], dtype=np.int16)
+                
+                # Play the audio data
+                sd.play(audio_data, samplerate=FS)
+                sd.wait()  # Wait until playback is complete
+                
+                # Remove the played portion from the buffer
+                audio_buffer = audio_buffer[FS * 2 * CHANNELS:]
+    
+    except Exception as e:
+        print(f"Error during audio playback: {e}")
 
 if __name__ == "__main__":
     try:
