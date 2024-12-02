@@ -18,7 +18,20 @@ void setup() {
 }
 
 void loop() {
-  
+    if (Serial.available() > 0) {
+    char command = Serial.read(); // Read command from Raspberry Pi
+    if (command == 'F') {         // Forward
+      Forward();
+    } else if (command == 'B') {  // Backward
+      Backward();
+    } else if (command == 'L') {  // Left
+      Left();
+    } else if (command == 'R') {  // Right
+      Right();
+    } else if (command == 'S') {  // Stop
+      Stop();
+    }
+  }
     if(irrecv.decode(&results))
       {
         if (results.value==0xFF18E7)//Press UP Button

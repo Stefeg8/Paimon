@@ -5,6 +5,8 @@ import cv2
 import threading
 from ultralytics import YOLO
 import queue
+import serial
+import time
 
 # config
 SERVER_IP = '169.231.9.9'  
@@ -26,9 +28,46 @@ class_names_list = None
 with open('/path/to/coco.names', 'r') as f:  # Update with the correct path
     class_names_list = [line.strip() for line in f.readlines()]
 
-def directions(x, y):
-    """Processes the detected coordinates."""
-    print(f"Directions called with coordinates: x={x}, y={y}")
+arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
+time.sleep(2) 
+
+def dir_movement(x, y):
+    """Handles actions when follow mode is active."""
+    print(f"Performing follow action with coordinates: x={x}, y={y}")
+    
+    # Decide movement based on x and y
+    if x > 0 and y > 0:
+        command = 'F'  # Forward
+    elif x < 0 and y > 0:
+        command = 'L'  # Left
+    elif x > 0 and y < 0:
+        command = 'R'  # Right
+    elif x < 0 and y < 0:
+        command = 'B'  # Backward
+    else:
+        command = 'S'  # Stop
+    
+    # Send command to Arduino
+    arduino.write(command.encode())
+    print(f"Sent command to Arduino: {command}")
+
+def directions(x, y, client_socket):
+    """Processes the detected coordinates and communicates with the server."""
+    try:
+        # Send the CHECK_FOLLOW message to the server
+        message = f"CHECK_FOLLOW {x} {y}"
+        client_socket.sendall(message.encode())
+        print(f"Sent directions to server: {message}")
+        
+        # Wait for and process the follow status from the server
+        data = client_socket.recv(1024).decode()
+        if "follow:true" in data:
+            print("Server confirmed: Follow mode active.")
+            dir_movement(x, y)  # Call a function if follow is active
+        elif "follow:false" in data:
+            print("Server confirmed: Follow mode inactive.")
+    except Exception as e:
+        print(f"Error in directions function: {e}")
 
 def record_and_send_audio(client_socket):
     """Records audio in chunks and sends it to the server in real time."""

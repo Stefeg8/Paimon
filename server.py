@@ -46,6 +46,8 @@ transcription_model = whisper.load_model("base").to("cuda")
 # Initialize TTS 
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
 
+follow = False
+
 # Initialize streaming TTS
 engine = CoquiEngine()
 stream = TextToAudioStream(engine)
@@ -108,6 +110,8 @@ def generate_and_stream_tts(client_socket, text):
 # Function to generate TTS and send back audio
 def generate_and_send_tts(client_socket, text):
     tts_text = generate_response(text)
+    if "follow" in tts_text:
+        follow = True
     print(f"Generating TTS for: {tts_text}")
     
     # Generate TTS audio 
@@ -134,6 +138,22 @@ def calculate_rms(data):
     rms = np.sqrt(np.mean(int_data ** 2))
     return rms
 
+def check_follow_true(client_socket, x, y):
+    """Handle the follow logic when the command is received."""
+    global follow
+    if follow:
+        print(f"Following coordinates: x={x}, y={y}")
+        response = "follow:true"  # Send 'true' if following
+    else:
+        print("Not following.")
+        response = "follow:false"  # Send 'false' if not following
+
+    # Send the response back to the Raspberry Pi
+    try:
+        client_socket.sendall(response.encode())
+    except Exception as e:
+        print(f"Error sending follow status: {e}")
+
 def handle_client(client_socket):
     print("Client connected")
 
@@ -149,65 +169,68 @@ def handle_client(client_socket):
     try:
         while True:
             data = client_socket.recv(CHUNK_SIZE)
-            
-            if data:
-                # Check audio levels
-                rms = calculate_rms(data)
-                print(f"Current RMS Level: {rms}")
-
-                # Reset silence timer as long as data is being received
-                silence_duration = 0
-                start_time = time.time()
-                wf.writeframes(data)
-
-                # Check if RMS level is above the silence threshold
-                if rms < SILENCE_THRESHOLD:
-                    print("Silence detected, processing audio...")
-                    wf.close()
-                    
-                    # Process the audio file
-                    AUDIO_FILE = "received_audio.wav"
-                    transcribed_text = transcription_model.transcribe(AUDIO_FILE)
-                    print(f"Transcription: " + transcribed_text["text"])
-
-                    # Send back a TTS response
-                    generate_and_send_tts(client_socket, transcribed_text)
-
-                    # Reopen the file for further incoming audio data
-                    wf = wave.open('received_audio.wav', 'wb')
-                    wf.setnchannels(CHANNELS)
-                    wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
-                    wf.setframerate(RATE)
-
-                    # Reset silence timer and start listening for new speech
-                    silence_duration = 0
-                    start_time = time.time()
-
+            if data.startswith("CHECK_FOLLOW"):
+                _, x, y = data.split()
+                check_follow_true(client_socket, float(x), float(y))
             else:
-                # No data received
-                silence_duration = time.time() - start_time
+                if data:
+                    # Check audio levels
+                    rms = calculate_rms(data)
+                    print(f"Current RMS Level: {rms}")
 
-                # Check if silence has been long enough to consider end of speech
-                if silence_duration >= SILENCE_TIMEOUT:
-                    print("Silence detected, processing audio...")
-                    wf.close()
-                    
-                    # Process the audio file
-                    AUDIO_FILE = "received_audio.wav"
-                    transcribed_text = transcription_model.transcribe(AUDIO_FILE)
-
-                    # Send back a TTS response
-                    generate_and_send_tts(client_socket, transcribed_text)
-
-                    # Reopen the file for further incoming audio data
-                    wf = wave.open('received_audio.wav', 'wb')
-                    wf.setnchannels(CHANNELS)
-                    wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
-                    wf.setframerate(RATE)
-
-                    # Reset silence timer and start listening for new speech
+                    # Reset silence timer as long as data is being received
                     silence_duration = 0
                     start_time = time.time()
+                    wf.writeframes(data)
+
+                    # Check if RMS level is above the silence threshold
+                    if rms < SILENCE_THRESHOLD:
+                        print("Silence detected, processing audio...")
+                        wf.close()
+                        
+                        # Process the audio file
+                        AUDIO_FILE = "received_audio.wav"
+                        transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+                        print(f"Transcription: " + transcribed_text["text"])
+
+                        # Send back a TTS response
+                        generate_and_send_tts(client_socket, transcribed_text)
+
+                        # Reopen the file for further incoming audio data
+                        wf = wave.open('received_audio.wav', 'wb')
+                        wf.setnchannels(CHANNELS)
+                        wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
+                        wf.setframerate(RATE)
+
+                        # Reset silence timer and start listening for new speech
+                        silence_duration = 0
+                        start_time = time.time()
+
+                else:
+                    # No data received
+                    silence_duration = time.time() - start_time
+
+                    # Check if silence has been long enough to consider end of speech
+                    if silence_duration >= SILENCE_TIMEOUT:
+                        print("Silence detected, processing audio...")
+                        wf.close()
+                        
+                        # Process the audio file
+                        AUDIO_FILE = "received_audio.wav"
+                        transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+
+                        # Send back a TTS response
+                        generate_and_send_tts(client_socket, transcribed_text)
+
+                        # Reopen the file for further incoming audio data
+                        wf = wave.open('received_audio.wav', 'wb')
+                        wf.setnchannels(CHANNELS)
+                        wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
+                        wf.setframerate(RATE)
+
+                        # Reset silence timer and start listening for new speech
+                        silence_duration = 0
+                        start_time = time.time()
 
     finally:
         wf.close()
