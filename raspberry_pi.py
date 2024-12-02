@@ -17,15 +17,15 @@ BUFFER_SIZE = 1024  #packet size
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 VIDEO_BUFFER_SIZE = 4096
-VIDEO_FPS = 20 
+VIDEO_FPS = 3
 
 FS = 16000  # Sampling rate
 CHANNELS = 1  # Mono
 DURATION = 0.1  # Duration of each audio packet capture
 
-model = YOLO("/path/to/yolov10n.pt")  # Update with the correct path
+model = YOLO("yolov10n.pt") 
 class_names_list = None
-with open('/path/to/coco.names', 'r') as f:  # Update with the correct path
+with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
 
 arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
@@ -36,14 +36,12 @@ def dir_movement(x, y):
     print(f"Performing follow action with coordinates: x={x}, y={y}")
     
     # Decide movement based on x and y
-    if x > 0 and y > 0:
+    if x >= 290 and x <= 350:
         command = 'F'  # Forward
-    elif x < 0 and y > 0:
+    elif x<290:
         command = 'L'  # Left
-    elif x > 0 and y < 0:
+    elif x > 350:
         command = 'R'  # Right
-    elif x < 0 and y < 0:
-        command = 'B'  # Backward
     else:
         command = 'S'  # Stop
     
