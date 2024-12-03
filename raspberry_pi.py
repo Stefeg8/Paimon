@@ -8,6 +8,11 @@ import queue
 import serial
 import time
 
+print("Available devices:")
+print(sd.query_devices())
+
+device_id = "what the fuck is my speaker's id"
+
 # config
 SERVER_IP = '169.231.9.9'  
 SERVER_PORT = 42069 
@@ -114,8 +119,8 @@ def receive_and_play_audio(client_socket):
                 # Convert the buffer into a NumPy array for playback
                 audio_data = np.frombuffer(audio_buffer[:FS * 2 * CHANNELS], dtype=np.int16)
                 
-                # Play the audio data
-                sd.play(audio_data, samplerate=FS)
+                # Play the audio data on the Bluetooth speaker
+                sd.play(audio_data, samplerate=FS, device=device_id)  # Specify device
                 sd.wait()  # Wait until playback is complete
                 
                 # Remove the played portion from the buffer
