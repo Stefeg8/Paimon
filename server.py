@@ -168,9 +168,10 @@ def handle_client(client_socket):
 
     try:
         while True:
+            header = client_socket.recv(8).decode().strip()
             data = client_socket.recv(CHUNK_SIZE)
-            if data.startswith("CHECK_FOLLOW"):
-                _, x, y = data.split()
+            if header == "CHECK":
+                x, y = data.split()
                 check_follow_true(client_socket, float(x), float(y))
             else:
                 if data:

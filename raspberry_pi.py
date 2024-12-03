@@ -58,7 +58,8 @@ def directions(x, y, client_socket):
     """Processes the detected coordinates and communicates with the server."""
     try:
         # Send the CHECK_FOLLOW message to the server
-        message = f"CHECK_FOLLOW {x} {y}"
+        header = "CHECK".ljust(8)  # Pad to 8 bytes
+        message = f"{header}{x} {y}"
         client_socket.sendall(message.encode())
         print(f"Sent directions to server: {message}")
         
@@ -91,8 +92,9 @@ def record_and_send_audio(client_socket):
             audio_bytes = audio_chunk.tobytes()
             
             # Send audio data in chunks of BUFFER_SIZE
+            header = "AUDIO".ljust(8)  # Pad to 8 bytes
             for i in range(0, len(audio_bytes), BUFFER_SIZE):
-                packet = audio_bytes[i:i + BUFFER_SIZE]
+                packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
                 client_socket.sendall(packet)
             receive_and_play_audio(client_socket)
     
