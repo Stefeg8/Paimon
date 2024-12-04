@@ -131,7 +131,7 @@ def receive_and_play_audio(client_socket):
         
 def capture_and_process_video():
     """Captures video frames, processes them, and sends them to the server."""
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     cap.set(cv2.CAP_PROP_FPS, VIDEO_FPS)
