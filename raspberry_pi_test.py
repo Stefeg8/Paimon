@@ -33,7 +33,7 @@ class_names_list = None
 with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
 
-arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
+#arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
 time.sleep(2) 
 
 def dir_movement(x, y):
@@ -129,7 +129,7 @@ def receive_and_play_audio(client_socket):
     except Exception as e:
         print(f"Error during audio playback: {e}")
         
-def capture_and_send_video(client_socket):
+def capture_and_process_video():
     """Captures video frames, processes them, and sends them to the server."""
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
@@ -139,16 +139,21 @@ def capture_and_send_video(client_socket):
     try:
         while cap.isOpened():
             ret, frame = cap.read()
+            print("Cap reading")
             if not ret:
+                print("broken")
                 break
             
             # YOLO Object Detection
             results = model(frame)[0]
+            cv2.imshow(frame)
+            print(results)
             for result in results.boxes.data:
                 x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
                 if int(class_id) < len(class_names_list) and class_names_list[int(class_id)] == "person":
                     center_x = (x_min + x_max) / 2
                     center_y = (y_min + y_max) / 2
+                    print(center_x,center_y)
                     directions(center_x, center_y)
 
     except Exception as e:
@@ -159,14 +164,17 @@ def capture_and_send_video(client_socket):
 def main():
     """Main function to start threads for audio and video streaming."""
     print(f"Connecting to server at {SERVER_IP}:{SERVER_PORT}...")
-    
+    while True:
+        capture_and_process_video()
     # Connect to server
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((SERVER_IP, SERVER_PORT))
         print("Connected to server.")
         while True:
-            message = f"CHECK_FOLLOW"
-            client_socket.sendall(message.encode())
+            capture_and_process_video()
+            # message = f"CHECK_FOLLOW"
+            # print(message)
+            # client_socket.sendall(message.encode())
 
 
 if __name__ == "__main__":
