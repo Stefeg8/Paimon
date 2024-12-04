@@ -145,6 +145,7 @@ def capture_and_process_video():
                 break
             
             # YOLO Object Detection
+            print("N ot broken")
             results = model(frame)[0]
             cv2.imshow(frame)
             print(results)
@@ -171,10 +172,10 @@ def main():
         client_socket.connect((SERVER_IP, SERVER_PORT))
         print("Connected to server.")
         while True:
-            capture_and_process_video()
-            # message = f"CHECK_FOLLOW"
-            # print(message)
-            # client_socket.sendall(message.encode())
+            #capture_and_process_video()
+            message = f"CHECK_FOLLOW"
+            print(message)
+            client_socket.sendall(message.encode())
 
 
 if __name__ == "__main__":
