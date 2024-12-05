@@ -7,11 +7,12 @@ from ultralytics import YOLO
 import queue
 import serial
 import time
+import os
+import subprocess
 
 print("Available devices:")
 print(sd.query_devices())
 
-device_id = "what the fuck is my speaker's id"
 
 # config
 SERVER_IP = '169.231.9.9'  
@@ -33,7 +34,7 @@ class_names_list = None
 with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
 
-arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
+#arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
 time.sleep(2) 
 
 def dir_movement(x, y):
@@ -67,7 +68,7 @@ def directions(x, y, client_socket):
         data = client_socket.recv(1024).decode()
         if "follow:true" in data:
             print("Server confirmed: Follow mode active.")
-            dir_movement(x, y)  # Call a function if follow is active
+            #dir_movement(x, y)  # Call a function if follow is active
         elif "follow:false" in data:
             print("Server confirmed: Follow mode inactive.")
     except Exception as e:
@@ -92,11 +93,13 @@ def record_and_send_audio(client_socket):
             audio_bytes = audio_chunk.tobytes()
             
             # Send audio data in chunks of BUFFER_SIZE
-            header = "AUDIO".ljust(8)  # Pad to 8 bytes
+            #header = "AUDIO".ljust(8)  # Pad to 8 bytes
             for i in range(0, len(audio_bytes), BUFFER_SIZE):
-                packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
+                #packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
+                packet = audio_bytes[i:i + BUFFER_SIZE]
                 client_socket.sendall(packet)
-            receive_and_play_audio(client_socket)
+                print("Packets sent")
+            #receive_and_play_audio(client_socket)
     
     except KeyboardInterrupt:
         print("\nStreaming stopped.")
@@ -105,12 +108,16 @@ def record_and_send_audio(client_socket):
 def receive_and_play_audio(client_socket):
     """Receives audio data from the server and plays it in real time."""
     audio_buffer = bytearray()  # Buffer to accumulate audio data
-    
+    time1 = time.time()
+    trytoreceive=True
+    print("Receive and play being called")
     try:
         # Continuously receive audio data from the server
-        while True:
+        while trytoreceive:
             data = client_socket.recv(BUFFER_SIZE)
+            print("data being received")
             if not data:
+                print("No data")
                 break  # If no data is received, exit the loop
             
             # Append the received data to the buffer
@@ -122,7 +129,7 @@ def receive_and_play_audio(client_socket):
                 audio_data = np.frombuffer(audio_buffer[:FS * 2 * CHANNELS], dtype=np.int16)
                 
                 # Play the audio data on the Bluetooth speaker
-                sd.play(audio_data, samplerate=FS, device=device_id)  # Specify device
+                sd.play(audio_data, samplerate=FS)  # Specify device
                 sd.wait()  # Wait until playback is complete
                 
                 # Remove the played portion from the buffer
@@ -158,6 +165,52 @@ def capture_and_send_video(client_socket):
     finally:
         cap.release()
 
+def run_yolo_on_image(image_path):
+    try:
+        frame = cv2.imread(image_path)
+        if frame is None:
+            print(f"Failed to read image {image_path}")
+            return
+
+        # Resize frame if needed (optional, YOLO will auto-resize internally)
+        # resized_frame = cv2.resize(frame, (640, 480))
+
+        # YOLO inference
+        print("Yolo inference rn")
+        results = model(frame)[0]
+        for result in results.boxes.data:
+            x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
+            print("Inferenced")
+            if int(class_id) < len(class_names_list):
+                label = class_names_list[int(class_id)]
+                print(f"Detected {label} with confidence {confidence:.2f} at [{x_min}, {y_min}, {x_max}, {y_max}]")
+                #dir_movement((x_min+x_max)/2,100)
+
+    except Exception as e:
+        print(f"Error during YOLO inference: {e}")
+
+
+def capture_and_send_video_lib():
+    duration=5, fps=2, output_dir="captured_images"
+    os.makedirs(output_dir, exist_ok=True)  # Create the output directory if it doesn't exist
+    interval = 1.0 / fps  # Time between captures in seconds
+    start_time = time.time()
+
+    while True:
+        timestamp = int(time.time() * 1000)  # Unique timestamp for filename
+        image_path = os.path.join(output_dir, f"frame_{timestamp}.jpg")
+        
+        # Capture the image using libcamera-still
+        cmd = ["libcamera-still", "-n", "-o", image_path]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        print(f"Captured image: {image_path}")
+        run_yolo_on_image(image_path)  # Run YOLO inference on the captured image
+
+        time.sleep(interval)  # Maintain consistent FPS
+
+    print("Image capture complete.")
+
 def main():
     """Main function to start threads for audio and video streaming."""
     print(f"Connecting to server at {SERVER_IP}:{SERVER_PORT}...")
@@ -168,14 +221,17 @@ def main():
         print("Connected to server.")
         
         # Create and start threads
-        audio_thread = threading.Thread(target=record_and_send_audio, args=(client_socket,))
-        video_thread = threading.Thread(target=capture_and_send_video, args=(client_socket,))
+        audio_thread = threading.Thread(target=record_and_send_audio, args=(client_socket,)) 
+        receive_thread = threading.Thread(target=receive_and_play_audio, args=(client_socket,))
+        #video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
         audio_thread.start()
-        video_thread.start()
+        receive_thread.start()
+        #video_thread.start()
 
         # Wait for threads to complete
         audio_thread.join()
-        video_thread.join()
+        receive_thread.join()
+        #video_thread.join()
 
 
 if __name__ == "__main__":
