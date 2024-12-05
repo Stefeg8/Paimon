@@ -27,7 +27,7 @@ from RealtimeTTS import CoquiEngine, TextToAudioStream
 # which will hopefully decrease latency
 
 # Configure the server
-HOST = '0.0.0.0' 
+HOST = '0.0.0.0'  
 PORT = 42069   
 
 # Audio settings
@@ -36,7 +36,7 @@ FORMAT = pyaudio.paInt16 #jiayou!!!!!
 CHANNELS = 1
 RATE = 16000 
 
-SILENCE_THRESHOLD = 500  # Change this value as we see fit
+SILENCE_THRESHOLD = 15  # Change this value as we see fit
 SILENCE_TIMEOUT = 1
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,10 +47,6 @@ transcription_model = whisper.load_model("base").to("cuda")
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
 
 follow = False
-
-# Initialize streaming TTS
-engine = CoquiEngine()
-stream = TextToAudioStream(engine)
 
 def load_templates(filename):
     templates = {}
@@ -71,7 +67,7 @@ def load_templates(filename):
     return templates
 
 # Set system templates
-templates = load_templates('Chat_Bot_Templates.txt')
+templates = load_templates('paimon_templates.txt')
 system_template = templates.get('default_paimon')
 model = GPT4All(model_name='mistral-7b-openorca.Q5_K_M.gguf', allow_download=False,device="cuda", model_path= 'models/')# Can set the allow_download to false if you want to run it locally
 prompt_template = 'Traveler: {0}\nPaimon: '
@@ -131,11 +127,26 @@ def generate_and_send_tts(client_socket, text):
     os.remove('response.wav')  
 
 def calculate_rms(data):
+    if len(data) == 0:
+        return 500
+    
     # Unpack the byte data into an array of integers
     int_data = np.frombuffer(data, dtype=np.int16)
     
+    if len(int_data) == 0:
+        return 500
+    
+    # Check for non-finite values
+    if not np.all(np.isfinite(int_data)):
+        return 500
+    
     # Calculate RMS
     rms = np.sqrt(np.mean(int_data ** 2))
+    
+    if np.isnan(rms):
+        print("RMS calculation resulted in NaN.")
+        return 500
+    
     return rms
 
 def check_follow_true(client_socket, x, y):
@@ -162,30 +173,45 @@ def handle_client(client_socket):
     wf.setnchannels(CHANNELS)
     wf.setsampwidth(pyaudio.get_sample_size(FORMAT))
     wf.setframerate(RATE)
+    print("wf file set")
+    received_data = b''
 
     silence_duration = 0
     start_time = time.time()
+    time.sleep(2)
 
     try:
         while True:
-            header = client_socket.recv(8).decode().strip()
+            #header = client_socket.recv(8).decode().strip()
+            header = False
             data = client_socket.recv(CHUNK_SIZE)
-            if header == "CHECK":
+            received_data += data
+            #print(data)
+            #if header == "CHECK":
+            if header:
+                # Im too tired to get this shit to work
                 x, y = data.split()
                 check_follow_true(client_socket, float(x), float(y))
             else:
                 if data:
                     # Check audio levels
-                    rms = calculate_rms(data)
-                    print(f"Current RMS Level: {rms}")
+                    if len(data) == 0:
+                        print("Invalid data in int_data. Skipping RMS calculation.")
+                        rms = 500  # or handle accordingly
+                    else:
+                        rms = calculate_rms(data)
+                        print(f"Current RMS Level: {rms}")
 
                     # Reset silence timer as long as data is being received
                     silence_duration = 0
-                    start_time = time.time()
-                    wf.writeframes(data)
+                    #start_time = time.time()
+                    if len(received_data) >= 20000:
+                        wf.writeframes(received_data)
+                        received_data = b''
 
                     # Check if RMS level is above the silence threshold
-                    if rms < SILENCE_THRESHOLD:
+                    #if rms < SILENCE_THRESHOLD:
+                    if time.time() - start_time >= 7:
                         print("Silence detected, processing audio...")
                         wf.close()
                         
@@ -193,9 +219,11 @@ def handle_client(client_socket):
                         AUDIO_FILE = "received_audio.wav"
                         transcribed_text = transcription_model.transcribe(AUDIO_FILE)
                         print(f"Transcription: " + transcribed_text["text"])
-
-                        # Send back a TTS response
-                        generate_and_send_tts(client_socket, transcribed_text)
+                        if transcribed_text["text"] == "":
+                            print("No text")
+                        else:
+                            # Send back a TTS response
+                            generate_and_send_tts(client_socket, transcribed_text)
 
                         # Reopen the file for further incoming audio data
                         wf = wave.open('received_audio.wav', 'wb')
@@ -209,6 +237,7 @@ def handle_client(client_socket):
 
                 else:
                     # No data received
+                    print("No data received.")
                     silence_duration = time.time() - start_time
 
                     # Check if silence has been long enough to consider end of speech
@@ -219,6 +248,7 @@ def handle_client(client_socket):
                         # Process the audio file
                         AUDIO_FILE = "received_audio.wav"
                         transcribed_text = transcription_model.transcribe(AUDIO_FILE)
+                        print(f"Transcription: " + transcribed_text["text"])
 
                         # Send back a TTS response
                         generate_and_send_tts(client_socket, transcribed_text)
@@ -250,4 +280,6 @@ def start_server():
             handle_client(client_socket)
 
 if __name__ == '__main__':
+    engine = CoquiEngine() 
+    stream = TextToAudioStream(engine)
     start_server()
