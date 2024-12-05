@@ -103,6 +103,7 @@ def record_and_send_audio(client_socket):
                     while chunk := audio_file.read(1024):
                         client_socket.sendall(chunk)
                     print("File sent successfully.")
+                    receive_audio(client_socket)
             except Exception as e:
                 print(f"Error: {e}")
 
@@ -136,7 +137,7 @@ def play_audio(client_socket):
 
     # Wait until audio finishes playing
     sd.wait()
-    receive_audio(client_socket)
+    #receive_audio(client_socket)
 
 def receive_audio(client_socket):
     with client_socket:
@@ -274,15 +275,15 @@ def main():
         
         # Create and start threads
         audio_thread = threading.Thread(target=record_and_send_audio, args=(client_socket,)) 
-        receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
+        #receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
         video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
         audio_thread.start()
-        receive_thread.start()
+        #receive_thread.start()
         video_thread.start()
 
         # Wait for threads to complete
         audio_thread.join()
-        receive_thread.join()
+        #receive_thread.join()
         video_thread.join()
 
 
