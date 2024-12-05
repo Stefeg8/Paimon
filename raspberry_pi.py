@@ -5,8 +5,10 @@ import cv2
 import threading
 from ultralytics import YOLO
 import queue
+import wave
 import serial
 import time
+from scipy.io.wavfile import write
 import os
 import subprocess
 
@@ -27,13 +29,13 @@ VIDEO_FPS = 3
 
 FS = 16000  # Sampling rate
 CHANNELS = 1  # Mono
-DURATION = 0.1  # Duration of each audio packet capture
-
+DURATION = 5  # Duration of each audio packet capture
+FILENAME = "recorded_audio.wav" 
 model = YOLO("yolov10n.pt") 
 class_names_list = None
 with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
-
+output_file = "tts_output.wav"
 #arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
 time.sleep(2) 
 
@@ -87,24 +89,74 @@ def record_and_send_audio(client_socket):
                 channels=CHANNELS, 
                 dtype='int16'
             )
-            sd.wait()  # W]ait until the audio is fully recorded
-            
+            sd.wait()  # Wait until the audio is fully recorded
+            write(FILENAME, FS, audio_chunk)
+            try:
+                # Send file size
+                file_size = os.path.getsize(FILENAME)
+                client_socket.sendall(f"{file_size}".encode('utf-8'))
+                client_socket.recv(1024)  # Wait for acknowledgment
+
+                # Send audio file
+                with open(FILENAME, 'rb') as audio_file:
+                    print("Sending file...")
+                    while chunk := audio_file.read(1024):
+                        client_socket.sendall(chunk)
+                    print("File sent successfully.")
+            except Exception as e:
+                print(f"Error: {e}")
+
             # Convert audio data to bytes
-            audio_bytes = audio_chunk.tobytes()
+            # audio_bytes = audio_chunk.tobytes()
             
-            # Send audio data in chunks of BUFFER_SIZE
-            #header = "AUDIO".ljust(8)  # Pad to 8 bytes
-            for i in range(0, len(audio_bytes), BUFFER_SIZE):
-                #packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
-                packet = audio_bytes[i:i + BUFFER_SIZE]
-                client_socket.sendall(packet)
-                print("Packets sent")
-            #receive_and_play_audio(client_socket)
+            # # Send audio data in chunks of BUFFER_SIZE
+            # #header = "AUDIO".ljust(8)  # Pad to 8 bytes
+            # for i in range(0, len(audio_bytes), BUFFER_SIZE):
+            #     #packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
+            #     packet = audio_bytes[i:i + BUFFER_SIZE]
+            #     client_socket.sendall(packet)
+            #     print("Packets sent")
+            # #receive_and_play_audio(client_socket)
     
     except KeyboardInterrupt:
         print("\nStreaming stopped.")
     except Exception as e:
         print(f"An error occurred: {e}")
+
+def play_audio(client_socket):
+    wf = wave.open("tts_output.wav", 'rb')
+
+    # Read audio data from file
+    frames = wf.readframes(wf.getnframes())
+    # Convert bytes to numpy array
+    audio_data = np.frombuffer(frames, dtype=np.int16)
+
+    # Play the audio
+    sd.play(audio_data, wf.getframerate())
+
+    # Wait until audio finishes playing
+    sd.wait()
+    receive_audio(client_socket)
+
+def receive_audio(client_socket):
+    with client_socket:
+        print("Connection established")
+        # Receive file size
+        file_size = int(client_socket.recv(1024).decode('utf-8'))
+        client_socket.sendall(b'ACK')  # Acknowledge file size
+
+        # Receive audio file
+        with open("tts_output.wav", 'wb') as audio_file:
+            print("Receiving file...")
+            bytes_received = 0
+            while bytes_received < file_size:
+                chunk = client_socket.recv(1024)
+                if not chunk:
+                    break
+                audio_file.write(chunk)
+                bytes_received += len(chunk)
+            print(f"File received and saved as {output_file}.")
+        play_audio(client_socket)
 def receive_and_play_audio(client_socket):
     """Receives audio data from the server and plays it in real time."""
     audio_buffer = bytearray()  # Buffer to accumulate audio data
@@ -222,16 +274,16 @@ def main():
         
         # Create and start threads
         audio_thread = threading.Thread(target=record_and_send_audio, args=(client_socket,)) 
-        receive_thread = threading.Thread(target=receive_and_play_audio, args=(client_socket,))
-        #video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
+        receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
+        video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
         audio_thread.start()
         receive_thread.start()
-        #video_thread.start()
+        video_thread.start()
 
         # Wait for threads to complete
         audio_thread.join()
         receive_thread.join()
-        #video_thread.join()
+        video_thread.join()
 
 
 if __name__ == "__main__":
