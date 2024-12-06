@@ -20,13 +20,17 @@ void setup() {
 void loop() {
     if (Serial.available() > 0) {
     char command = Serial.read(); // Read command from Raspberry Pi
-    if (command == 'F') {         // Forward
+    if (command == 'F') {    
+      Serial.println("Acknowledged: F");    // Forward
       Forward();
-    } else if (command == 'B') {  // Backward
+    } else if (command == 'B') { 
+      Serial.println("Acknowledged: B");   // Backward
       Backward();
-    } else if (command == 'L') {  // Left
+    } else if (command == 'L') {
+      Serial.println("Acknowledged: L");    // Left
       Left();
-    } else if (command == 'R') {  // Right
+    } else if (command == 'R') {
+      Serial.println("Acknowledged: R");    // Right
       Right();
     } else if (command == 'S') {  // Stop
       Stop();
