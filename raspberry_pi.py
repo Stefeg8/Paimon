@@ -36,7 +36,7 @@ class_names_list = None
 with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
 output_file = "tts_output.wav"
-#arduino = serial.Serial('/dev/ttyUSB0', 9600)  # erm wtf
+arduino = serial.Serial('/dev/ttyACM0', 9600)  # erm wtf
 time.sleep(2) 
 
 def dir_movement(x, y):
@@ -44,18 +44,24 @@ def dir_movement(x, y):
     print(f"Performing follow action with coordinates: x={x}, y={y}")
     
     # Decide movement based on x and y
-    if x >= 290 and x <= 350:
+    if x >=1500 and x <= 3000:
         command = 'F'  # Forward
-    elif x<290:
+    elif x<1500:
         command = 'L'  # Left
-    elif x > 350:
+    elif x > 3000:
         command = 'R'  # Right
     else:
         command = 'S'  # Stop
-    
+    print(command)
     # Send command to Arduino
     arduino.write(command.encode())
     print(f"Sent command to Arduino: {command}")
+    time.sleep(1)
+    if arduino.in_waiting >0:
+        ack = arduino.read(arduino.in_waiting).decode('utf-8').strip()
+        #print(f"received ack {ack}")
+    else:
+        print("No ack")
 
 def directions(x, y, client_socket):
     """Processes the detected coordinates and communicates with the server."""
@@ -78,34 +84,34 @@ def directions(x, y, client_socket):
 
 def record_and_send_audio(client_socket):
     """Records audio in chunks and sends it to the server in real time."""
-    try:
+    #try:
         # Continuously record and send audio
-        print("Starting audio streaming...")
-        while True:
-            # Record a small chunk of audio
-            audio_chunk = sd.rec(
-                int(DURATION * FS), 
-                samplerate=FS, 
-                channels=CHANNELS, 
-                dtype='int16'
-            )
-            sd.wait()  # Wait until the audio is fully recorded
-            write(FILENAME, FS, audio_chunk)
-            try:
-                # Send file size
-                file_size = os.path.getsize(FILENAME)
-                client_socket.sendall(f"{file_size}".encode('utf-8'))
-                client_socket.recv(1024)  # Wait for acknowledgment
+    print("Starting audio streaming...")
+    while True:
+        # Record a small chunk of audio
+        audio_chunk = sd.rec(
+            int(DURATION * FS), 
+            samplerate=FS, 
+            channels=CHANNELS, 
+            dtype='int16'
+        )
+        sd.wait()  # Wait until the audio is fully recorded
+        write(FILENAME, FS, audio_chunk)
+        try:
+            # Send file size
+            file_size = os.path.getsize(FILENAME)
+            client_socket.sendall(f"{file_size}".encode('utf-8'))
+            client_socket.recv(1024)  # Wait for acknowledgment
 
-                # Send audio file
-                with open(FILENAME, 'rb') as audio_file:
-                    print("Sending file...")
-                    while chunk := audio_file.read(1024):
-                        client_socket.sendall(chunk)
-                    print("File sent successfully.")
-                    receive_audio(client_socket)
-            except Exception as e:
-                print(f"Error: {e}")
+            # Send audio file
+            with open(FILENAME, 'rb') as audio_file:
+                print("Sending file...")
+                while chunk := audio_file.read(1024):
+                    client_socket.sendall(chunk)
+                print("File sent successfully.")
+                receive_audio(client_socket)
+        except Exception as e:
+            print(f"Error: {e}")
 
             # Convert audio data to bytes
             # audio_bytes = audio_chunk.tobytes()
@@ -119,10 +125,10 @@ def record_and_send_audio(client_socket):
             #     print("Packets sent")
             # #receive_and_play_audio(client_socket)
     
-    except KeyboardInterrupt:
-        print("\nStreaming stopped.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    #except KeyboardInterrupt:
+        #print("\nStreaming stopped.")
+    #except Exception as e:
+        #print(f"An error occurred: {e}")
 
 def play_audio(client_socket):
     wf = wave.open("tts_output.wav", 'rb')
@@ -138,6 +144,7 @@ def play_audio(client_socket):
     # Wait until audio finishes playing
     sd.wait()
     #receive_audio(client_socket)
+    record_and_send_audio(client_socket)
 
 def receive_audio(client_socket):
     with client_socket:
@@ -237,14 +244,16 @@ def run_yolo_on_image(image_path):
             if int(class_id) < len(class_names_list):
                 label = class_names_list[int(class_id)]
                 print(f"Detected {label} with confidence {confidence:.2f} at [{x_min}, {y_min}, {x_max}, {y_max}]")
-                #dir_movement((x_min+x_max)/2,100)
+                dir_movement((x_min+x_max)/2,100)
 
     except Exception as e:
         print(f"Error during YOLO inference: {e}")
 
 
-def capture_and_send_video_lib():
-    duration=5, fps=2, output_dir="captured_images"
+def capture_and_send_video_lib(client_socket):
+    duration=5
+    fps=2
+    output_dir="captured_images"
     os.makedirs(output_dir, exist_ok=True)  # Create the output directory if it doesn't exist
     interval = 1.0 / fps  # Time between captures in seconds
     start_time = time.time()
