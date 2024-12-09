@@ -82,6 +82,29 @@ def directions(x, y, client_socket):
     except Exception as e:
         print(f"Error in directions function: {e}")
 
+def record_and_send_audio1(client_socket):
+    while True:
+        try:
+            audio_chunk = sd.rec(int(DURATION * FS), samplerate=FS, channels=CHANNELS, dtype='int16')
+            sd.wait()
+            write(FILENAME, FS, audio_chunk)
+
+            file_size = os.path.getsize(FILENAME)
+            client_socket.sendall(f"{file_size}".encode('utf-8'))
+            client_socket.recv(1024)  # ACK
+
+            with open(FILENAME, 'rb') as audio_file:
+                while chunk := audio_file.read(1024):
+                    client_socket.sendall(chunk)
+            
+            receive_audio(client_socket)  # Ensure this function doesn't block indefinitely
+
+        except Exception as e:
+            print(f"Error during recording or sending: {e}")
+            client_socket.close()
+            break
+
+
 def record_and_send_audio(client_socket):
     """Records audio in chunks and sends it to the server in real time."""
     #try:
@@ -283,7 +306,7 @@ def main():
         print("Connected to server.")
         
         # Create and start threads
-        audio_thread = threading.Thread(target=record_and_send_audio, args=(client_socket,)) 
+        audio_thread = threading.Thread(target=record_and_send_audio1, args=(client_socket,)) 
         #receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
         video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
         audio_thread.start()
