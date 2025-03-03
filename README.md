@@ -14,3 +14,14 @@ To finetune the model, we scraped the Genshin wiki for information about charact
 We processed our data and used the hyperparameters seen in our train.py script to finetune the model. 
 
 We merged weights and utilized llama.cpp to convert our weights to a gguf file.
+
+# Usage
+Load the Jetson main file and the server main file onto their respective devices. 
+
+# Recommended specs
+Jetson on the drone, use a raspberry pi in a pinch. At least 8 GB of VRAM on the server GPU, ideally 16. 
+
+# Debug
+1: Check documentation
+2: Try debug
+3: Cry
