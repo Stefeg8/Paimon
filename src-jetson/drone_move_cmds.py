@@ -1,0 +1,72 @@
+from pymavlink import mavutil
+import time
+import math
+
+def set_drone_pitch(master, pitch_angle=None, pitch_rate=None, thrust=0.5):
+    """
+    Sends a MAVLink SET_ATTITUDE_TARGET message to pitch the drone up or down.
+    
+    :param master: MAVLink connection object
+    :param pitch_angle: Target pitch angle in degrees (positive = nose up, negative = nose down). If None, pitch_rate is used.
+    :param pitch_rate: Continuous pitch rate in rad/s (negative = pitch down, positive = pitch up). If None, pitch_angle is used.
+    :param thrust: Thrust value (0-1 range, 0.5 = hover)
+    """
+    if pitch_angle is not None:
+        # Convert pitch angle to radians and compute quaternion
+        pitch_rad = math.radians(pitch_angle)
+        q = [0, math.sin(pitch_rad / 2), 0, math.cos(pitch_rad / 2)]
+        
+        # Send SET_ATTITUDE_TARGET with fixed pitch angle
+        master.mav.set_attitude_target_send(
+            int(time.time() * 1e6),  # Timestamp in microseconds
+            master.target_system,  # Target system ID
+            master.target_component,  # Target component ID
+            0b00000000,  # Ignore body rates
+            q,  # Attitude quaternion
+            0,  # Roll rate
+            0,  # Pitch rate
+            0,  # Yaw rate
+            thrust  # Thrust (0-1)
+        )
+    
+    elif pitch_rate is not None:
+        # Send SET_ATTITUDE_TARGET with continuous pitch rate
+        master.mav.set_attitude_target_send(
+            int(time.time() * 1e6),  # Timestamp in microseconds
+            master.target_system,  # Target system ID
+            master.target_component,  # Target component ID
+            0b00000100,  # Ignore attitude quaternion, use body rates
+            [0, 0, 0, 1],  # Identity quaternion (no change)
+            0,  # Roll rate
+            pitch_rate,  # Pitch rate (rad/s)
+            0,  # Yaw rate
+            thrust  # Thrust (0-1)
+        )
+
+def hold_pitch_angle(master, pitch_angle, thrust=0.5, duration=5):
+    """
+    Continuously commands the drone to maintain a pitch angle.
+
+    :param master: MAVLink connection object
+    :param pitch_angle: Target pitch angle in degrees (positive = nose up, negative = nose down).
+    :param thrust: Thrust value (0-1 range, 0.5 = hover)
+    :param duration: Duration to hold the attitude (in seconds)
+    """
+
+    pitch_rad = math.radians(pitch_angle)
+    q = [0, math.sin(pitch_rad / 2), 0, math.cos(pitch_rad / 2)]
+
+    start_time = time.time()
+    while time.time() - start_time < duration:
+        master.mav.set_attitude_target_send(
+            int(time.time() * 1e6),
+            master.target_system,
+            master.target_component,
+            0b00000000,  # Ignore body rates
+            q,  # Attitude quaternion
+            0,  # Roll rate
+            0,  # Pitch rate
+            0,  # Yaw rate
+            thrust  # Thrust (0-1)
+        )
+        time.sleep(0.02)  # Send at 50Hz (every 20ms)
