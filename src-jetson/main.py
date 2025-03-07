@@ -1,3 +1,10 @@
+'''
+Usage: Load onto Jetson or Raspberry Pi.
+Functions: Contains audio gathering and sending functions as well as 
+movement commands and YOLO inference. 
+'''
+
+
 from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
 from pymavlink import mavutil

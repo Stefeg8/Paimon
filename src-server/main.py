@@ -1,3 +1,9 @@
+'''
+Usage: Load onto ground server. Required 8GB VRAM, recommended 16GB.
+Functions: Contains audio receiving and sending functions as well as 
+LLM and TTS functions. 
+'''
+
 import socket
 import wave
 import pyaudio
@@ -62,7 +68,7 @@ def load_templates(filename):
     return templates
 
 # Set system templates
-templates = load_templates('paimon_templates.txt')
+templates = load_templates('inc/paimon_templates.txt')
 system_template = templates.get('default_paimon')
 model = GPT4All(model_name='mistral-7b-openorca.Q5_K_M.gguf', allow_download=False,device="cuda", model_path= 'models/')# Can set the allow_download to false if you want to run it locally
 prompt_template = 'User: {0}\nChatbot: '
