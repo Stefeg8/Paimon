@@ -4,6 +4,7 @@ Functions: Contains audio gathering and sending functions as well as
 movement commands and YOLO inference. 
 '''
 
+
 from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
 from pymavlink import mavutil
@@ -11,6 +12,7 @@ import time
 
 master = mavutil.mavlink_connection("udp:127.0.0.1:14550") #should be port 14550 but check 
 master.wait_heartbeat()
+
 
 # Example Usage:
 dmc.hold_pitch_angle(master, pitch_angle=15, duration=5)
@@ -61,13 +63,58 @@ VIDEO_FPS = 3
 FS = 16000  # Sampling rate
 CHANNELS = 1  # Mono
 DURATION = 5  # Duration of each audio packet capture
-FILENAME = "output_files/recorded_audio.wav" 
-model = YOLO("inc/yolov10n.pt") 
+FILENAME = "recorded_audio.wav" 
+model = YOLO("yolov10n.pt") 
 class_names_list = None
-with open('inc/coco.names', 'r') as f:  
+with open('coco.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
-output_file = "output_files/tts_output.wav"
+output_file = "tts_output.wav"
+arduino = serial.Serial('/dev/ttyACM0', 9600)  # erm wtf
 time.sleep(2) 
+
+def dir_movement(x, y):
+    """Handles actions when follow mode is active."""
+    print(f"Performing follow action with coordinates: x={x}, y={y}")
+    
+    # Decide movement based on x and y
+    if x >=1500 and x <= 3000:
+        command = 'F'  # Forward
+    elif x<1500:
+        command = 'L'  # Left
+    elif x > 3000:
+        command = 'R'  # Right
+    else:
+        command = 'S'  # Stop
+    print(command)
+    # Send command to Arduino
+    arduino.write(command.encode())
+    print(f"Sent command to Arduino: {command}")
+    time.sleep(1)
+    if arduino.in_waiting >0:
+        ack = arduino.read(arduino.in_waiting).decode('utf-8').strip()
+        #print(f"received ack {ack}")
+    else:
+        print("No ack")
+
+def directions(x, y, client_socket):
+    """Processes the detected coordinates and communicates with the server."""
+    # deprecated
+    try:
+        # Send the CHECK_FOLLOW message to the server
+        header = "CHECK".ljust(8)  # Pad to 8 bytes
+        message = f"{header}{x} {y}"
+        client_socket.sendall(message.encode())
+        print(f"Sent directions to server: {message}")
+        
+        # Wait for and process the follow status from the server
+        data = client_socket.recv(1024).decode()
+        if "follow:true" in data:
+            print("Server confirmed: Follow mode active.")
+            #dir_movement(x, y)  # Call a function if follow is active
+        elif "follow:false" in data:
+            print("Server confirmed: Follow mode inactive.")
+    except Exception as e:
+        print(f"Error in directions function: {e}")
 
 def record_and_send_audio1(client_socket):
     while True:
@@ -123,8 +170,25 @@ def record_and_send_audio(client_socket):
         except Exception as e:
             print(f"Error: {e}")
 
+            # Convert audio data to bytes
+            # audio_bytes = audio_chunk.tobytes()
+            
+            # # Send audio data in chunks of BUFFER_SIZE
+            # #header = "AUDIO".ljust(8)  # Pad to 8 bytes
+            # for i in range(0, len(audio_bytes), BUFFER_SIZE):
+            #     #packet = header.encode() + audio_bytes[i:i + BUFFER_SIZE]
+            #     packet = audio_bytes[i:i + BUFFER_SIZE]
+            #     client_socket.sendall(packet)
+            #     print("Packets sent")
+            # #receive_and_play_audio(client_socket)
+    
+    #except KeyboardInterrupt:
+        #print("\nStreaming stopped.")
+    #except Exception as e:
+        #print(f"An error occurred: {e}")
+
 def play_audio(client_socket):
-    wf = wave.open("output_files/tts_output.wav", 'rb')
+    wf = wave.open("tts_output.wav", 'rb')
 
     # Read audio data from file
     frames = wf.readframes(wf.getnframes())
@@ -147,7 +211,7 @@ def receive_audio(client_socket):
         client_socket.sendall(b'ACK')  # Acknowledge file size
 
         # Receive audio file
-        with open("output_files/tts_output.wav", 'wb') as audio_file:
+        with open("tts_output.wav", 'wb') as audio_file:
             print("Receiving file...")
             bytes_received = 0
             while bytes_received < file_size:
@@ -158,6 +222,38 @@ def receive_audio(client_socket):
                 bytes_received += len(chunk)
             print(f"File received and saved as {output_file}.")
         play_audio(client_socket)
+def receive_and_play_audio(client_socket):
+    """Receives audio data from the server and plays it in real time."""
+    audio_buffer = bytearray()  # Buffer to accumulate audio data
+    time1 = time.time()
+    trytoreceive=True
+    print("Receive and play being called")
+    try:
+        # Continuously receive audio data from the server
+        while trytoreceive:
+            data = client_socket.recv(BUFFER_SIZE)
+            print("data being received")
+            if not data:
+                print("No data")
+                break  # If no data is received, exit the loop
+            
+            # Append the received data to the buffer
+            audio_buffer.extend(data)
+
+            # If the buffer has enough data for a playback chunk
+            if len(audio_buffer) >= FS * 2 * CHANNELS:
+                # Convert the buffer into a NumPy array for playback
+                audio_data = np.frombuffer(audio_buffer[:FS * 2 * CHANNELS], dtype=np.int16)
+                
+                # Play the audio data on the Bluetooth speaker
+                sd.play(audio_data, samplerate=FS)  # Specify device
+                sd.wait()  # Wait until playback is complete
+                
+                # Remove the played portion from the buffer
+                audio_buffer = audio_buffer[FS * 2 * CHANNELS:]
+    
+    except Exception as e:
+        print(f"Error during audio playback: {e}")
         
 def capture_and_send_video(client_socket):
     """Captures video frames, processes them, and sends them to the server."""
@@ -234,6 +330,8 @@ def capture_and_send_video_lib(client_socket):
         run_yolo_on_image(image_path)  # Run YOLO inference on the captured image
 
         time.sleep(interval)  # Maintain consistent FPS
+
+    print("Image capture complete.")
 
 def main():
     """Main function to start threads for audio and video streaming."""

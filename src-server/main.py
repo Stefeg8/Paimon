@@ -73,7 +73,6 @@ system_template = templates.get('default_paimon')
 model = GPT4All(model_name='mistral-7b-openorca.Q5_K_M.gguf', allow_download=False,device="cuda", model_path= 'models/')# Can set the allow_download to false if you want to run it locally
 prompt_template = 'User: {0}\nChatbot: '
 
-
 def generate_response(user_input):
         # Can force lower max token count(i.e. 100) so that responses are shorter and are faster to generate
         # Change temperature(temp) for more creative responses. Top_k, top_p, min_p, and repeat_penalty are all hyperparameters
@@ -107,12 +106,12 @@ def send_audio(client_socket):
     # Create a socket
     try:
         # Send file size
-        file_size = os.path.getsize('response.wav')
+        file_size = os.path.getsize('output_files/response.wav')
         client_socket.sendall(f"{file_size}".encode('utf-8'))
         client_socket.recv(1024)  # Wait for acknowledgment
 
         # Send audio file
-        with open('response.wav', 'rb') as audio_file:
+        with open('output_files/response.wav', 'rb') as audio_file:
             print("Sending file...")
             while chunk := audio_file.read(1024):
                 client_socket.sendall(chunk)
@@ -130,20 +129,10 @@ def generate_and_send_tts(client_socket, text):
     
     # Generate TTS audio 
     # Here when we generate TTS audio we can 
-    tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav"], language="en", file_path="response.wav")
+    tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav"], language="en", file_path="output_files/response.wav")
     #tts.tts_to_file(text=tts_text, speaker_wav=["emily1.wav", "IMG_1306.wav", "IMG_1307.wav", "IMG_1308.wav","IMG_1309.wav","IMG_1310.wav","IMG_1313.wav","IMG_1314.wav","IMG_1315.wav"], language="en", file_path="response.wav")
     send_audio(client_socket)  
-    # Open the wav file and send it back
-    # wf = wave.open('response.wav', 'rb')
-    
-    # while True:
-    #     data = wf.readframes(CHUNK_SIZE)
-    #     if not data:
-    #         break
-    #     client_socket.sendall(data)
-    
-    # wf.close()
-    os.remove('response.wav')  
+    os.remove('output_files/response.wav')  
 
 def calculate_rms(data):
     if len(data) == 0:
@@ -168,22 +157,6 @@ def calculate_rms(data):
     
     return rms
 
-def check_follow_true(client_socket, x, y):
-    """Handle the follow logic when the command is received."""
-    global follow
-    if follow:
-        print(f"Following coordinates: x={x}, y={y}")
-        response = "follow:true"  # Send 'true' if following
-    else:
-        print("Not following.")
-        response = "follow:false"  # Send 'false' if not following
-
-    # Send the response back to the Raspberry Pi
-    try:
-        client_socket.sendall(response.encode())
-    except Exception as e:
-        print(f"Error sending follow status: {e}")
-
 def handle_client(client_socket):
     try:
         print("Client connected")
@@ -197,7 +170,7 @@ def handle_client(client_socket):
                 break
 
             # Receive audio file
-            with open("received_audio.wav", 'wb') as audio_file:
+            with open("output_files/received_audio.wav", 'wb') as audio_file:
                 bytes_received = 0
                 while bytes_received < file_size:
                     chunk = client_socket.recv(1024)
@@ -207,7 +180,7 @@ def handle_client(client_socket):
                     bytes_received += len(chunk)
 
             print("File received. Transcribing...")
-            AUDIO_FILE = "received_audio.wav"
+            AUDIO_FILE = "output_files/received_audio.wav"
             transcribed_text = transcription_model.transcribe(AUDIO_FILE)
             if transcribed_text["text"]:
                 generate_and_send_tts(client_socket, transcribed_text["text"])
@@ -237,6 +210,6 @@ if __name__ == '__main__':
     engine = CoquiEngine() 
     stream = TextToAudioStream(engine)
     print("Warmup speech)")
-    tts.tts_to_file(text="How is your day today traveler. How may I assist you?", speaker_wav=["emily1.wav"], language="en", file_path="warmup_speech.wav")
+    tts.tts_to_file(text="How is your day today traveler. How may I assist you?", speaker_wav=["emily1.wav"], language="en", file_path="output_files/warmup_speech.wav")
     with model.chat_session(system_template, prompt_template):
         start_server()
