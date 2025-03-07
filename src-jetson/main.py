@@ -1,4 +1,5 @@
 from inc import drone_move_cmds as dmc
+from inc import pitch_calculation as pcalc
 from pymavlink import mavutil
 import time
 
@@ -293,7 +294,7 @@ def run_yolo_on_image(image_path):
             if int(class_id) < len(class_names_list):
                 label = class_names_list[int(class_id)]
                 print(f"Detected {label} with confidence {confidence:.2f} at [{x_min}, {y_min}, {x_max}, {y_max}]")
-                x_deg_calc,y_deg_calc = dmc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
+                x_deg_calc,y_deg_calc = pcalc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
                 quaternion = dmc.euler_to_quaternion_quaternion(0,y_deg_calc, x_deg_calc)
                 # send movement command here
                 # dir_movement((x_min+x_max)/2,100)  # deprecated
