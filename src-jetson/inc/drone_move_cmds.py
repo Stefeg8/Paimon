@@ -2,9 +2,13 @@ from pymavlink import mavutil
 import time
 import math
 
+# Note: a reverse quaternion will effectively reverse the previous rotational command
+# We can use this to backtrack, gain distance, etc etc
+
 def euler_to_quaternion(roll, pitch, yaw):
     """
     Converts Euler angles (in degrees) to a quaternion [x, y, z, w].
+    Deprecated. use quaternion.py
     """
     roll, pitch, yaw = map(math.radians, [roll, pitch, yaw])  # Convert degrees to radians
     cy = math.cos(yaw * 0.5)
