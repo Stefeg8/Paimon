@@ -3,6 +3,7 @@
 
 """
 Quaternion implementation for use in pymavlink
+reference material. DO NOT USE
 """
 
 from __future__ import absolute_import, division, print_function

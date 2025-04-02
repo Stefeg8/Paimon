@@ -1,6 +1,8 @@
 from pymavlink import mavutil
 import time
 import math
+from scipy.spatial.transform import Rotation as R
+import numpy as np
 
 # Note: a reverse quaternion will effectively reverse the previous rotational command
 # We can use this to backtrack, gain distance, etc etc
@@ -8,7 +10,6 @@ import math
 def euler_to_quaternion(roll, pitch, yaw):
     """
     Converts Euler angles (in degrees) to a quaternion [x, y, z, w].
-    Deprecated. use quaternion.py
     """
     roll, pitch, yaw = map(math.radians, [roll, pitch, yaw])  # Convert degrees to radians
     cy = math.cos(yaw * 0.5)
@@ -24,6 +25,109 @@ def euler_to_quaternion(roll, pitch, yaw):
     qw = cr * cp * cy + sr * sp * sy
 
     return [qx, qy, qz, qw]
+
+def normalize_quaternion(q):
+    norm = np.linalg.norm(q)
+    if norm == 0:
+        raise ValueError("Quaternion has zero magnitude!")
+    return [i / norm for i in q]
+
+def slerp(q1, q2, t):
+    q1 = R.from_quat(q1)
+    q2 = R.from_quat(q2)
+    q_interp = R.slerp(t, [q1, q2]).as_quat()
+    return q_interp
+
+def set_drone_attitude_smooth(master, current_roll, current_pitch, current_yaw, target_roll, target_pitch, target_yaw, duration=1.0, steps=10, thrust=0.5):
+    """
+    Smoothly adjusts the drone's roll, pitch, and yaw using SLERP over a set duration.
+
+    :param master: MAVLink connection object
+    :param current_roll: Current roll angle in degrees
+    :param current_pitch: Current pitch angle in degrees
+    :param current_yaw: Current yaw angle in degrees
+    :param target_roll: Desired roll angle in degrees
+    :param target_pitch: Desired pitch angle in degrees
+    :param target_yaw: Desired yaw angle in degrees
+    :param duration: Time (in seconds) over which the transition happens
+    :param steps: Number of intermediate steps in the transition
+    :param thrust: Thrust value (0-1 range, 0.5 = hover)
+    """
+    # Convert current and target angles to quaternions
+    q_start = R.from_euler('xyz', [current_roll, current_pitch, current_yaw], degrees=True).as_quat()
+    q_end = R.from_euler('xyz', [target_roll, target_pitch, target_yaw], degrees=True).as_quat()
+
+    # Interpolate the quaternions using SLERP
+    for i in range(steps + 1):
+        t = i / steps  # Interpolation factor (0 to 1)
+        q_interp = slerp(q_start, q_end, t)
+
+        # Send attitude command using interpolated quaternion
+        master.mav.set_attitude_target_send(
+            int(time.time() * 1e6),
+            master.target_system,
+            master.target_component,
+            0b00000000,  # Ignore body rates, use quaternion
+            q_interp,  
+            0, 0, 0,  # No roll/pitch/yaw rates
+            thrust  # Thrust (0-1)
+        )
+        
+        time.sleep(duration / steps)  # Delay for smooth transition
+
+# Function to calculate attitude adjustments based on person's pixel location
+def calculate_attitude_adjustment(person_x, person_y, image_width, image_height, max_angle=30):
+    """
+    Calculate the required roll, pitch, and yaw to follow a detected person.
+
+    :param person_x: Person's x-coordinate in pixels.
+    :param person_y: Person's y-coordinate in pixels.
+    :param image_width: Width of the camera image in pixels.
+    :param image_height: Height of the camera image in pixels.
+    :param max_angle: Maximum angle to rotate in degrees.
+    
+    :return: (roll, pitch, yaw) adjustments in degrees.
+    """
+    # Calculate offsets from the center of the image
+    offset_x = person_x - (image_width / 2)  # Horizontal offset
+    offset_y = person_y - (image_height / 2)  # Vertical offset
+
+    # Normalize offsets to the range [-1, 1]
+    norm_offset_x = offset_x / (image_width / 2)
+    norm_offset_y = offset_y / (image_height / 2)
+
+    # Calculate pitch and yaw adjustments based on offsets
+    pitch = max(-max_angle, min(max_angle, norm_offset_y * max_angle))
+    yaw = max(-max_angle, min(max_angle, norm_offset_x * max_angle))
+
+    # Roll may not be needed if the camera is already aligned, so we keep it at 0
+    roll = 0
+
+    return roll, pitch, yaw
+
+def follow_person(master, person_x, person_y, image_width=640, image_height=480, duration=2.0, steps=20, thrust=0.5):
+    """
+    Follow a person based on their detected position (x, y) in the image frame.
+    
+    :param master: MAVLink connection object
+    :param person_x: x-coordinate of the person in the image.
+    :param person_y: y-coordinate of the person in the image.
+    :param image_width: Camera image width in pixels.
+    :param image_height: Camera image height in pixels.
+    :param duration: Time for smooth transition.
+    :param steps: Number of steps for SLERP interpolation.
+    :param thrust: Thrust level for hovering.
+    """
+    # Calculate the required attitude adjustments
+    roll, pitch, yaw = calculate_attitude_adjustment(person_x, person_y, image_width, image_height)
+
+    # Assuming current attitude is 0 for simplicity (you should get this from the drone's current state)
+    current_roll = 0
+    current_pitch = 0
+    current_yaw = 0
+
+    # Use SLERP to smoothly move the drone
+    set_drone_attitude_smooth(master, current_roll, current_pitch, current_yaw, roll, pitch, yaw, duration, steps, thrust)
 
 def set_drone_pitch(master, pitch_angle=None, pitch_rate=None, thrust=0.5):
     """
