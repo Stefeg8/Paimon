@@ -141,7 +141,7 @@ def get_current_attitude(master):
     master.mav.request_data_stream_send(
         master.target_system, 
         master.target_component, 
-        mavlink.MAV_DATA_STREAM_ALL,  # Stream all data
+        mavutil.mavlink.MAV_DATA_STREAM_ALL,  # Stream all data
         1,  # Frequency in Hz (1 Hz in this case)
         1   # Enable the data stream
     )
