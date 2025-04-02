@@ -38,6 +38,31 @@ def slerp(q1, q2, t):
     q_interp = R.slerp(t, [q1, q2]).as_quat()
     return q_interp
 
+def quaternion_to_euler(q):
+    """
+    Converts a quaternion to Euler angles (roll, pitch, yaw).
+    
+    :param q: Quaternion as [x, y, z, w]
+    :return: Roll, Pitch, Yaw in radians
+    """
+    x, y, z, w = q
+
+    # Roll (x-axis rotation)
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+
+    # Pitch (y-axis rotation)
+    sinp = 2.0 * (w * y - z * x)
+    pitch = math.asin(sinp) if abs(sinp) <= 1 else math.copysign(math.pi / 2, sinp)
+
+    # Yaw (z-axis rotation)
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+
+    return roll, pitch, yaw
+
 def set_drone_attitude_smooth(master, current_roll, current_pitch, current_yaw, target_roll, target_pitch, target_yaw, duration=1.0, steps=10, thrust=0.5):
     """
     Smoothly adjusts the drone's roll, pitch, and yaw using SLERP over a set duration.
@@ -105,6 +130,35 @@ def calculate_attitude_adjustment(person_x, person_y, image_width, image_height,
 
     return roll, pitch, yaw
 
+def get_current_attitude(master):
+    """
+    Get the current attitude (roll, pitch, yaw) from the drone.
+
+    :param master: MAVLink connection object
+    :return: roll, pitch, yaw (in radians)
+    """
+    # Request the current attitude
+    master.mav.request_data_stream_send(
+        master.target_system, 
+        master.target_component, 
+        mavlink.MAV_DATA_STREAM_ALL,  # Stream all data
+        1,  # Frequency in Hz (1 Hz in this case)
+        1   # Enable the data stream
+    )
+
+    # Wait for the ATTITUDE message (this might take some time)
+    message = master.recv_match(type='ATTITUDE', blocking=True)  # Block until we get the message
+
+    if message:
+        # The attitude message contains roll, pitch, yaw (in radians)
+        roll = message.roll
+        pitch = message.pitch
+        yaw = message.yaw
+        return roll, pitch, yaw
+    else:
+        print("Failed to get attitude")
+        return None, None, None
+
 def follow_person(master, person_x, person_y, image_width=640, image_height=480, duration=2.0, steps=20, thrust=0.5):
     """
     Follow a person based on their detected position (x, y) in the image frame.
@@ -118,14 +172,15 @@ def follow_person(master, person_x, person_y, image_width=640, image_height=480,
     :param steps: Number of steps for SLERP interpolation.
     :param thrust: Thrust level for hovering.
     """
-    # Calculate the required attitude adjustments
+     # Get the current attitude from the drone
+    current_roll, current_pitch, current_yaw = get_current_attitude(master)
+    
+    if current_roll is None or current_pitch is None or current_yaw is None:
+        print("Could not get current attitude")
+        return
+
+    print(f"Current Attitude - Roll: {current_roll}, Pitch: {current_pitch}, Yaw: {current_yaw}")
     roll, pitch, yaw = calculate_attitude_adjustment(person_x, person_y, image_width, image_height)
-
-    # Assuming current attitude is 0 for simplicity (you should get this from the drone's current state)
-    current_roll = 0
-    current_pitch = 0
-    current_yaw = 0
-
     # Use SLERP to smoothly move the drone
     set_drone_attitude_smooth(master, current_roll, current_pitch, current_yaw, roll, pitch, yaw, duration, steps, thrust)
 
