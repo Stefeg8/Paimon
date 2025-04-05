@@ -208,6 +208,13 @@ def run_yolo_on_image(image_path):
                 x_deg_calc,y_deg_calc = pcalc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
                 quaternion = dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc)
                 norm_quaternion = dmc.normalize_quaternion(dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc))
+                curr_roll, curr_yaw, curr_pitch = dmc.get_current_attitude(master)
+                q_current = dmc.get_current_attitude_quaternion(master)
+                dir_cam = dmc.angles_to_direction_vector(x_deg_calc, y_deg_calc)
+                dir_world = dmc.camera_to_world_vector(dir_cam, q_current)
+                q_target = dmc.look_rotation(dir_world)
+                q_next = dmc.slerp_rotation(q_current, q_target, t=0.1) 
+                dmc.set_attitude(master, q_next)
                 # send movement command here
                 # dir_movement((x_min+x_max)/2,100)  # deprecated
 

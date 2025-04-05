@@ -9,9 +9,9 @@ import numpy as np
 
 def euler_to_quaternion(roll, pitch, yaw):
     """
-    Converts Euler angles (in degrees) to a quaternion [x, y, z, w].
+    Converts Euler angles (in degrees) to a quaternion [w, x, y, z] for MAVLink.
     """
-    roll, pitch, yaw = map(math.radians, [roll, pitch, yaw])  # Convert degrees to radians
+    roll, pitch, yaw = map(math.radians, [roll, pitch, yaw])
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
     cp = math.cos(pitch * 0.5)
@@ -24,7 +24,7 @@ def euler_to_quaternion(roll, pitch, yaw):
     qz = cr * cp * sy - sr * sp * cy
     qw = cr * cp * cy + sr * sp * sy
 
-    return [qx, qy, qz, qw]
+    return [qw, qx, qy, qz]
 
 def normalize_quaternion(q):
     norm = np.linalg.norm(q)
@@ -158,6 +158,75 @@ def get_current_attitude(master):
     else:
         print("Failed to get attitude")
         return None, None, None
+    
+def get_current_attitude_quaternion(master):
+    master.wait_heartbeat()
+    while True:
+        msg = master.recv_match(type='ATTITUDE_QUATERNION', blocking=True)
+        if msg:
+            q = [msg.q1, msg.q2, msg.q3, msg.q4]
+            return q
+        
+def angles_to_direction_vector(delta_x_deg, delta_y_deg):
+    # Convert to radians
+    yaw_rad = np.radians(delta_x_deg)
+    pitch_rad = np.radians(delta_y_deg)
+
+    # In the camera frame:
+    # - Forward is +Z
+    # - Right is +X
+    # - Down is +Y
+    x = np.tan(yaw_rad)      # left/right offset
+    y = np.tan(pitch_rad)    # up/down offset
+    z = 1.0                  # forward
+
+    # Direction vector (not yet normalized)
+    vec = np.array([x, y, z])
+    return vec / np.linalg.norm(vec)
+'''deprecated
+def angles_to_direction_vector(delta_yaw_deg, delta_pitch_deg):
+    yaw_rad = np.radians(delta_yaw_deg)
+    pitch_rad = np.radians(delta_pitch_deg)
+    
+    # Assume forward is +Z in camera frame, X is right, Y is down
+    x = np.sin(yaw_rad)
+    y = np.sin(pitch_rad)
+    z = np.cos(yaw_rad) * np.cos(pitch_rad)
+    
+    vec = np.array([x, y, z])
+    return vec / np.linalg.norm(vec)
+'''
+def camera_to_world_vector(direction_cam, q_current, cam_to_drone=None):
+    r_current = R.from_quat(q_current)
+    
+    # If camera is mounted at an angle, account for that
+    if cam_to_drone:
+        r_cam_to_drone = R.from_quat(cam_to_drone)
+        direction_drone = r_cam_to_drone.apply(direction_cam)
+    else:
+        direction_drone = direction_cam
+    
+    # Transform to world frame
+    direction_world = r_current.apply(direction_drone)
+    return direction_world
+
+def look_rotation(direction_world, up=np.array([0, 0, 1])):
+    z = direction_world / np.linalg.norm(direction_world)
+    x = np.cross(up, z)
+    if np.linalg.norm(x) < 1e-6:  # up and direction are nearly aligned
+        x = np.array([1, 0, 0])  # fallback
+    x /= np.linalg.norm(x)
+    y = np.cross(z, x)
+
+    rot_matrix = np.vstack([x, y, z]).T
+    return R.from_matrix(rot_matrix).as_quat()
+
+def slerp_rotation(q_current, q_target, t):
+    r_current = R.from_quat(q_current)
+    r_target = R.from_quat(q_target)
+    slerp = R.slerp(0, 1, [r_current, r_target])
+    r_interp = slerp(t)
+    return r_interp.as_quat()
 
 def follow_person(master, person_x, person_y, image_width=640, image_height=480, duration=2.0, steps=20, thrust=0.5):
     """
@@ -275,7 +344,7 @@ def set_yaw_angle(master, yaw_angle, thrust=0.5, duration=2):
         )
         time.sleep(0.02)  # Send at 50Hz
 
-def set_attitude(master, pitch, yaw, thrust=0.5, duration=2):
+def set_attitude1(master, pitch, yaw, thrust=0.5, duration=2):
     """
     Commands the drone to a specific pitch and yaw angle.
 
@@ -301,3 +370,30 @@ def set_attitude(master, pitch, yaw, thrust=0.5, duration=2):
             thrust  # Thrust (0-1)
         )
         time.sleep(0.02)  # 50Hz update rate
+
+def set_attitude(master, q, thrust=0.5, duration=2.0):
+    """
+    Set drone's attitude using a target quaternion (w, x, y, z).
+
+    :param master: MAVLink connection
+    :param q: Quaternion [w, x, y, z]
+    :param thrust: Thrust (0.0 - 1.0)
+    :param duration: Duration to maintain this attitude
+    """
+    if len(q) != 4:
+        raise ValueError("Quaternion must have 4 elements: [w, x, y, z]")
+
+    type_mask = 0b00000111  # Ignore roll, pitch, yaw rates
+
+    start_time = time.time()
+    while time.time() - start_time < duration:
+        master.mav.set_attitude_target_send(
+            int(time.time() * 1e6),           # time_boot_ms
+            master.target_system,
+            master.target_component,
+            type_mask,
+            q,                                # Quaternion (w, x, y, z)
+            0, 0, 0,                          # Roll/Pitch/Yaw rate (ignored)
+            thrust
+        )
+        time.sleep(0.02)
