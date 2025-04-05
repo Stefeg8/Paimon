@@ -6,6 +6,7 @@ movement commands and YOLO inference.
 
 from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
+from lidar import tfmini as ld
 from pymavlink import mavutil
 import time
 
@@ -206,15 +207,20 @@ def run_yolo_on_image(image_path):
                 label = class_names_list[int(class_id)]
                 print(f"Detected {label} with confidence {confidence:.2f} at [{x_min}, {y_min}, {x_max}, {y_max}]")
                 x_deg_calc,y_deg_calc = pcalc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
-                quaternion = dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc)
+                quaternion = dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc) 
                 norm_quaternion = dmc.normalize_quaternion(dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc))
                 curr_roll, curr_yaw, curr_pitch = dmc.get_current_attitude(master)
-                q_current = dmc.get_current_attitude_quaternion(master)
+                q_current = dmc.get_current_attitude_quaternion(master) # calculating quaternion to pass to set_attitude 
                 dir_cam = dmc.angles_to_direction_vector(x_deg_calc, y_deg_calc)
                 dir_world = dmc.camera_to_world_vector(dir_cam, q_current)
                 q_target = dmc.look_rotation(dir_world)
                 q_next = dmc.slerp_rotation(q_current, q_target, t=0.1) 
-                dmc.set_attitude(master, q_next)
+                distance, strength = ld.getTFminiData()
+                if(distance>160):
+                    dmc.set_attitude(master, q_next)
+                else:
+                    q_pitch_up = dmc.pitch_up_calc(q_current,10)
+                    dmc.set_attitude(master, q_pitch_up)
                 # send movement command here
                 # dir_movement((x_min+x_max)/2,100)  # deprecated
 

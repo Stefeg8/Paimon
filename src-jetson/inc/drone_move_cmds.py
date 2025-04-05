@@ -228,6 +228,28 @@ def slerp_rotation(q_current, q_target, t):
     r_interp = slerp(t)
     return r_interp.as_quat()
 
+def pitch_up_calc(quat, pitch_deg):
+    """
+    Adjusts the pitch of a given quaternion by a small angle.
+
+    Parameters:
+    - quat: array-like, shape (4,) in [x, y, z, w] format
+    - pitch_deg: float, the amount of pitch to add in degrees
+
+    Returns:
+    - new_quat: array, shape (4,), the adjusted quaternion [x, y, z, w]
+    """
+    # Original orientation as a rotation object
+    original_rot = R.from_quat(quat)
+
+    # Pitch-up rotation about the y-axis
+    pitch_rot = R.from_euler('y', pitch_deg, degrees=True)
+
+    # Compose rotations: apply pitch on top of original orientation
+    new_rot = pitch_rot * original_rot
+
+    return new_rot.as_quat()
+
 def follow_person(master, person_x, person_y, image_width=640, image_height=480, duration=2.0, steps=20, thrust=0.5):
     """
     Follow a person based on their detected position (x, y) in the image frame.
