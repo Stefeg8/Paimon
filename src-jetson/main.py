@@ -8,6 +8,7 @@ from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
 from lidar import tfmini as ld
 from pymavlink import mavutil
+from scipy.spatial.transform import Rotation as R
 import time
 
 master = mavutil.mavlink_connection("udp:127.0.0.1:14550") #should be port 14550 but check 
@@ -209,18 +210,37 @@ def run_yolo_on_image(image_path):
                 x_deg_calc,y_deg_calc = pcalc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
                 quaternion = dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc) 
                 norm_quaternion = dmc.normalize_quaternion(dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc))
-                curr_roll, curr_yaw, curr_pitch = dmc.get_current_attitude(master)
-                q_current = dmc.get_current_attitude_quaternion(master) # calculating quaternion to pass to set_attitude 
+                curr_roll, curr_pitch, curr_yaw = dmc.get_current_attitude(master)
+                # calculating quaternion to pass to set_attitude 
+                q_current = dmc.get_current_attitude_quaternion(master) 
                 dir_cam = dmc.angles_to_direction_vector(x_deg_calc, y_deg_calc)
                 dir_world = dmc.camera_to_world_vector(dir_cam, q_current)
                 q_target = dmc.look_rotation(dir_world)
                 q_next = dmc.slerp_rotation(q_current, q_target, t=0.1) 
+                # lidar dist
                 distance, strength = ld.getTFminiData()
-                if(distance>160):
-                    dmc.set_attitude(master, q_next)
-                else:
-                    q_pitch_up = dmc.pitch_up_calc(q_current,10)
+
+                # Distance thresholds for reference(in cm)
+                SAFE_DISTANCE = 220
+                CAUTION_DISTANCE = 180
+                CRITICAL_DISTANCE = 100
+                MAX_PITCH = 20
+
+                pitch_increment = dmc.get_pitch_increment(distance)
+                if pitch_increment == 0:
+                    if distance > SAFE_DISTANCE:
+                        # All clear – use q_next (whatever is pre-calculated for next move)
+                        dmc.set_attitude(master, q_next)
+                    else:
+                        # Too close – hover to avoid collision
+                        hover_quat = R.from_euler('xyz', [0, 0, 0], degrees=True).as_quat()
+                        dmc.set_attitude(master, hover_quat)
+
+                if curr_pitch + pitch_increment <= MAX_PITCH:
+                    q_pitch_up = dmc.pitch_up_calc(q_current, pitch_increment)
                     dmc.set_attitude(master, q_pitch_up)
+                else:
+                    dmc.set_attitude(master,q_current)
                 # send movement command here
                 # dir_movement((x_min+x_max)/2,100)  # deprecated
 

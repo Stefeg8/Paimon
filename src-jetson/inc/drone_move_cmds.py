@@ -419,3 +419,19 @@ def set_attitude(master, q, thrust=0.5, duration=2.0):
             thrust
         )
         time.sleep(0.02)
+
+
+
+def get_pitch_increment(distance):
+    # Distance thresholds
+    SAFE_DISTANCE = 220
+    CAUTION_DISTANCE = 180
+    CRITICAL_DISTANCE = 100
+    if distance > SAFE_DISTANCE:
+        return 0
+    elif distance > CAUTION_DISTANCE:
+        return 5  # gentle pitch-up
+    elif distance > CRITICAL_DISTANCE:
+        return 10  # more aggressive pitch-up
+    else:
+        return 0  # too close, hover
