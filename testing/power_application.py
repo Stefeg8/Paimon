@@ -1,6 +1,7 @@
 from pymavlink import mavutil
 
-master = mavutil.mavlink_connection("udp:<drone_ip>:14550") #should be port 14550 but check. PLEASE CHANGE THIS
+#master = mavutil.mavlink_connection("udp:<drone_ip>:14550")
+master = mavutil.mavlink_connection("COM4", baud=57600)  #should be port 14550 but check. PLEASE CHANGE THIS
 master.wait_heartbeat()
 
 master.mav.command_long_send(
