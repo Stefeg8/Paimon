@@ -25,3 +25,6 @@ Jetson on the drone, use a raspberry pi in a pinch. At least 8 GB of VRAM on the
 1: Check documentation
 2: Try debug
 3: Cry
+
+# TODO
+Write checks so the drone can't pitch and roll past 45-60 degrees
