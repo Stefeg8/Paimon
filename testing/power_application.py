@@ -1,7 +1,7 @@
 from pymavlink import mavutil
 
-#master = mavutil.mavlink_connection("udp:<drone_ip>:14550")
-master = mavutil.mavlink_connection("COM4", baud=57600)  #should be port 14550 but check. PLEASE CHANGE THIS
+#master = mavutil.mavlink_connection("udp:<drone_ip>:14550") #use this on macos, make sure udp is set to 14550
+master = mavutil.mavlink_connection("COM4", baud=57600)  # use this with telemetry radio on windows. Usage: device manager->ports and then find your port
 master.wait_heartbeat()
 
 master.mav.command_long_send(
