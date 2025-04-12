@@ -19,7 +19,26 @@ master.mav.command_long_send(
 print("drone armed")
 print("waiting 3 seconds")
 time.sleep(3)
+print("applying 0.25 thrust")
+
+type_mask = 0b00001111  # = 15
+
+master.mav.set_attitude_target_send(
+    int(master.time_since_boot() * 1000),  # time_boot_ms
+    master.target_system,
+    master.target_component,
+    type_mask=0b00001111,  # ignore attitude and body rates
+    q=[1, 0, 0, 0],  # dummy quaternion, will be ignored
+    body_roll_rate=0,
+    body_pitch_rate=0,
+    body_yaw_rate=0,
+    thrust=0.25 
+)
+print("0.25 thrust applied")
+
+time.sleep(3)
 print("applying 0.5 thrust")
+
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
@@ -34,3 +53,54 @@ master.mav.set_attitude_target_send(
     thrust=0.5 
 )
 print("0.5 thrust applied")
+
+time.sleep(3)
+print("applying 0.75 thrust")
+
+type_mask = 0b00001111  # = 15
+
+master.mav.set_attitude_target_send(
+    int(master.time_since_boot() * 1000),  # time_boot_ms
+    master.target_system,
+    master.target_component,
+    type_mask=0b00001111,  # ignore attitude and body rates
+    q=[1, 0, 0, 0],  # dummy quaternion, will be ignored
+    body_roll_rate=0,
+    body_pitch_rate=0,
+    body_yaw_rate=0,
+    thrust=0.75 
+)
+print("0.75 thrust applied")
+
+time.sleep(3)
+
+print("applying 0 thrust and initiating shutdown")
+
+type_mask = 0b00001111  # = 15
+
+master.mav.set_attitude_target_send(
+    int(master.time_since_boot() * 1000),  # time_boot_ms
+    master.target_system,
+    master.target_component,
+    type_mask=0b00001111,  # ignore attitude and body rates
+    q=[1, 0, 0, 0],  # dummy quaternion, will be ignored
+    body_roll_rate=0,
+    body_pitch_rate=0,
+    body_yaw_rate=0,
+    thrust=0
+)
+print("thrust set to 0")
+
+time.sleep(1)
+
+print("disarming")
+
+master.mav.command_long_send(
+    master.target_system,  # System ID
+    master.target_component,  # Component ID
+    mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,  # Command to arm/disarm
+    0,  # Confirmation (0 = no confirmation)
+    0,  # Arm the drone (0 = disarm, 1 = arm)
+    0, 0, 0, 0, 0, 0  # Other parameters are not needed for this command
+)
+print("disarmed")
