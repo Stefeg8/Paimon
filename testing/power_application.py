@@ -1,8 +1,11 @@
 from pymavlink import mavutil
-
+import time 
 #master = mavutil.mavlink_connection("udp:<drone_ip>:14550") #use this on macos, make sure udp is set to 14550
+print("Initializing connection")
 master = mavutil.mavlink_connection("COM4", baud=57600)  # use this with telemetry radio on windows. Usage: device manager->ports and then find your port
+print("working...")
 master.wait_heartbeat()
+print("connection established")
 
 master.mav.command_long_send(
     master.target_system,  # System ID
@@ -13,6 +16,10 @@ master.mav.command_long_send(
     0, 0, 0, 0, 0, 0  # Other parameters are not needed for this command
 )
 
+print("drone armed")
+print("waiting 3 seconds")
+time.sleep(3)
+print("applying 0.5 thrust")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
@@ -26,3 +33,4 @@ master.mav.set_attitude_target_send(
     body_yaw_rate=0,
     thrust=0.5 
 )
+print("0.5 thrust applied")
