@@ -6,6 +6,7 @@ master = mavutil.mavlink_connection("COM4", baud=57600)  # use this with telemet
 print("working...")
 master.wait_heartbeat()
 print("connection established")
+start_time = time.time()
 
 master.mav.command_long_send(
     master.target_system,  # System ID
@@ -24,7 +25,7 @@ print("applying 0.25 thrust")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int(master.time_since_boot() * 1000),  # time_boot_ms
+    int((time.time() - start_time) * 1000),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
@@ -42,7 +43,7 @@ print("applying 0.5 thrust")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int(master.time_since_boot() * 1000),  # time_boot_ms
+    int((time.time() - start_time) * 1000),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
@@ -60,7 +61,7 @@ print("applying 0.75 thrust")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int(master.time_since_boot() * 1000),  # time_boot_ms
+    int((time.time() - start_time) * 1000),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
@@ -79,7 +80,7 @@ print("applying 0 thrust and initiating shutdown")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int(master.time_since_boot() * 1000),  # time_boot_ms
+    int((time.time() - start_time) * 1000),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
