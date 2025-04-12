@@ -105,3 +105,18 @@ master.mav.command_long_send(
     0, 0, 0, 0, 0, 0
 )
 print("disarmed")
+
+print("switching to MANUAL mode")
+
+# Mode 1 = MANUAL in PX4
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+    0,
+    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+    1,  # PX4 manual mode
+    0, 0, 0, 0, 0
+)
+time.sleep(1)
+print("mode switched to MANUAL")

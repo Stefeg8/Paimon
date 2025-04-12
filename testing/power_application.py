@@ -19,13 +19,13 @@ master.mav.command_long_send(
 
 print("drone armed")
 print("waiting 3 seconds")
-time.sleep(3)
+time.sleep(6)
 print("applying 0.25 thrust")
 
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int((time.time() - start_time) * 1000),  # time_boot_ms
+    (0),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
@@ -61,7 +61,7 @@ print("applying 0.75 thrust")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int((time.time() - start_time) * 1000),  # time_boot_ms
+    (0),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
@@ -80,7 +80,7 @@ print("applying 0 thrust and initiating shutdown")
 type_mask = 0b00001111  # = 15
 
 master.mav.set_attitude_target_send(
-    int((time.time() - start_time) * 1000),  # time_boot_ms
+    (0),  # time_boot_ms
     master.target_system,
     master.target_component,
     type_mask=0b00001111,  # ignore attitude and body rates
