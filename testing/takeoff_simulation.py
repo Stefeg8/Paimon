@@ -20,9 +20,9 @@ def send_thrust(master, start_time, thrust, duration):
             master.target_component,
             type_mask=0b10000000,
             q=[1, 0, 0, 0],
-            body_roll_rate=0.01,
-            body_pitch_rate=0.01,
-            body_yaw_rate=0.01,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
             thrust=thrust
         )
         time.sleep(0.05)  # 20 Hz
@@ -41,9 +41,9 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             master.target_component,
             type_mask=0b10000000,
             q=[1, 0, 0, 0],
-            body_roll_rate=0.01,
-            body_pitch_rate=0.01,
-            body_yaw_rate=0.01,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
             thrust=thrust
         )
         time.sleep(0.05)
@@ -58,9 +58,9 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             master.target_component,
             type_mask=0b10000000,
             q=[1, 0, 0, 0],
-            body_roll_rate=0.01,
-            body_pitch_rate=0.01,
-            body_yaw_rate=0.01,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
             thrust=takeoff_thrust
         )
         time.sleep(0.05)
@@ -74,9 +74,9 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             master.target_component,
             type_mask=0b10000000,
             q=[1, 0, 0, 0],
-            body_roll_rate=0.01,
-            body_pitch_rate=0.01,
-            body_yaw_rate=0.01,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
             thrust=thrust
         )
         time.sleep(0.05)
@@ -116,9 +116,9 @@ for _ in range(20):
         master.target_component,
         type_mask=0b10000000,
         q=[1, 0, 0, 0],
-        body_roll_rate=0.01,
-        body_pitch_rate=0.01,
-        body_yaw_rate=0.01,
+        body_roll_rate=0,
+        body_pitch_rate=0,
+        body_yaw_rate=0,
         thrust=0.0
     )
     time.sleep(0.05)
