@@ -36,19 +36,6 @@ print(f"Heartbeat from system {master.target_system} component {master.target_co
 # Start heartbeats
 heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
 heartbeat_thread.start()
-
-# Disable safety
-print("Disabling safety switch")
-master.mav.command_long_send(
-    master.target_system,
-    master.target_component,
-    mavutil.mavlink.MAV_CMD_DO_SET_SAFETY,
-    0,
-    0,  # 0 = disable safety
-    0, 0, 0, 0, 0, 0
-)
-time.sleep(2)
-
 # Arm
 print("Arming motors")
 master.mav.command_long_send(
