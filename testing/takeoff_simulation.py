@@ -140,7 +140,7 @@ print("OFFBOARD mode set")
 # Takeoff simulation
 # Pass takeoff_thrust as the 3rd argument to get a custom thrust value. Default is 0.6 in the function
 takeoff_thrust = 0.5 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
-ramp_duration = 3 # Adjust this value as needed. its how long it takes for the drone to go up from 0 thrust to takeoff thrust. don't really need to change this though
+ramp_duration = 5 # Adjust this value as needed. its how long it takes for the drone to go up from 0 thrust to takeoff thrust. don't really need to change this though
 simulate_takeoff_and_landing(master, start_time, takeoff_thrust, ramp_duration)
 #simulate_takeoff_and_landing(master, start_time) # this is the default function. you can use this if you want. 
 
