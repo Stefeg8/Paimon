@@ -15,6 +15,7 @@ def emergency_auto_level(master,hover_thrust=0.5,start_time=time.time()):
     )
 
 def emergency_land(master,takeoff_thrust=0.5,start_time=time.time()):
+        #emergency_auto_level(master,takeoff_thrust,start_time)  # we can consider passing autolevel first
         print("ramping down thrust")
         ramp_duration = 4
         steps = int(ramp_duration / 0.05) 
@@ -33,3 +34,33 @@ def emergency_land(master,takeoff_thrust=0.5,start_time=time.time()):
                 thrust=thrust
                 )
                 time.sleep(0.05)
+
+def emergency_manual_control(master,takeoff_thrust=0.5,start_time=time.time()):
+       emergency_auto_level(master,takeoff_thrust,start_time)
+       print("switching to manual mode")
+       master.mav.command_long_send(
+             master.target_system,
+             master.target_component,
+             mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+             0,
+             mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+             1,  # manual mode number in PX4
+             0, 0, 0, 0, 0
+             )
+       time.sleep(1)
+       print("manual mode set")
+
+def emergency_stabilized_control(master,takeoff_thrust=0.5,start_time=time.time()):
+       emergency_auto_level(master,takeoff_thrust,start_time)
+       print("switching to stablized mode")
+       master.mav.command_long_send(
+             master.target_system,
+             master.target_component,
+             mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+             0,
+             mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+             10,  # manual mode number in PX4
+             0, 0, 0, 0, 0
+             )
+       time.sleep(1)
+       print("stabilized mode set")

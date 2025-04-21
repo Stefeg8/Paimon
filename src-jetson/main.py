@@ -6,7 +6,7 @@ movement commands and YOLO inference.
 
 from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
-from inc import fallback as fb # fallbacks, contain autolevel and autoland. pass level then land
+from inc import fallback as fb # fallbacks, contain autolevel and autoland. if need to autoland, then autolevel->autoland
 from lidar import tfmini as ld
 from pymavlink import mavutil
 from scipy.spatial.transform import Rotation as R
