@@ -435,3 +435,33 @@ def get_pitch_increment(distance):
         return 10  # more aggressive pitch-up
     else:
         return 0  # too close, hover
+    
+def initialize_offboard(master, start_time=time.time()):
+    print("sending pre-offboard attitude targets") # have to do this first or else it doesn't work
+    for _ in range(20):
+        master.mav.set_attitude_target_send(
+        int((time.time() - start_time) * 1000),
+        master.target_system,
+        master.target_component,
+        type_mask=0b10000000,
+        q=[1, 0, 0, 0],
+        body_roll_rate=0,
+        body_pitch_rate=0,
+        body_yaw_rate=0,
+        thrust=0.0
+        )
+        time.sleep(0.05)
+
+    # Switch to OFFBOARD mode (custom mode 6 in PX4)
+    print("switching to OFFBOARD mode")
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        6,  # OFFBOARD mode number in PX4
+        0, 0, 0, 0, 0
+    )
+    time.sleep(1)
+    print("OFFBOARD mode set")

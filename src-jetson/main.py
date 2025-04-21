@@ -6,6 +6,7 @@ movement commands and YOLO inference.
 
 from inc import drone_move_cmds as dmc
 from inc import pitch_calculation as pcalc
+from inc import fallback as fb # fallbacks, contain autolevel and autoland. pass level then land
 from lidar import tfmini as ld
 from pymavlink import mavutil
 from scipy.spatial.transform import Rotation as R
@@ -15,20 +16,20 @@ master = mavutil.mavlink_connection("udp:127.0.0.1:14550") #should be port 14550
 master.wait_heartbeat()
 
 # Example Usage:
-dmc.hold_pitch_angle(master, pitch_angle=15, duration=5)
+#dmc.hold_pitch_angle(master, pitch_angle=15, duration=5)
     
-dmc.set_drone_pitch(master, pitch_angle=15)# Pitch up 15 degrees
+#dmc.set_drone_pitch(master, pitch_angle=15)# Pitch up 15 degrees
 
 # Wait for a few seconds
-time.sleep(2)
+#time.sleep(2)
 
-dmc.set_drone_pitch(master, pitch_rate=-0.3) # Pitch down continuously at 0.3 rad/s
+#dmc.set_drone_pitch(master, pitch_rate=-0.3) # Pitch down continuously at 0.3 rad/s
     
-time.sleep(3)
-dmc.set_drone_pitch(master, pitch_rate=0) # Wait and then stop pitch motion
+#time.sleep(3)
+#dmc.set_drone_pitch(master, pitch_rate=0) # Wait and then stop pitch motion
 
 # Example: Turn 30 degrees right
-dmc.set_yaw_angle(master, yaw_angle=30)
+#dmc.set_yaw_angle(master, yaw_angle=30)
 
 
 import socket
@@ -277,6 +278,9 @@ def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((SERVER_IP, SERVER_PORT))
         print("Connected to server.")
+
+        #initialize offboard mode
+        dmc.initialize_offboard(master)
         
         # Create and start threads
         audio_thread = threading.Thread(target=record_and_send_audio1, args=(client_socket,)) 
