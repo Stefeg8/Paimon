@@ -139,14 +139,34 @@ def directions(x_deg_calc, y_deg_calc):
         if pitch_increment == 0:
             if distance > SAFE_DISTANCE:
                 dmc.set_attitude(master, q_next, thrust=0.56)
+                with resource_lock:
+                    global last_quat, last_thrust
+                    last_quat = q_next
+                    last_thrust = 0.56
+                return
             else:
                 dmc.set_attitude(master, hover_quat, thrust=0.54)
+                with resource_lock:
+                    global last_quat, last_thrust
+                    last_quat = hover_quat
+                    last_thrust = 0.54
+                return
         else:
             if curr_pitch + pitch_increment <= MAX_PITCH:
                 q_pitch_up = dmc.pitch_up_calc(q_current, pitch_increment)
                 dmc.set_attitude(master, q_pitch_up, thrust=0.56)
+                with resource_lock:
+                    global last_quat, last_thrust
+                    last_quat = q_pitch_up
+                    last_thrust = 0.56
+                return
             else:
                 dmc.set_attitude(master, q_current, thrust=0.54)
+                with resource_lock:
+                    global last_quat, last_thrust
+                    last_quat = q_current
+                    last_thrust = 0.54
+                return
 def capture_and_send_video_lib(client_socket):
     while True:
         frame = read_frame()
