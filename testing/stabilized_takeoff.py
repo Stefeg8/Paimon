@@ -35,16 +35,23 @@ def euler_to_quaternion(roll, pitch, yaw):
     ]
     return q
 
-def get_attitude(master):
-    msg = master.recv_match(type='ATTITUDE', blocking=True)
-    return msg.roll, msg.pitch, msg.yaw  # In radians
+def get_local_position(master):
+    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
+    return msg.x, msg.y, msg.z  # z is negative upward (NED frame)
 
-def stabilize_and_hover(master, start_time, hold_duration, target_roll=0.0, target_pitch=0.0, target_yaw=0.0):
+def get_altitude(master):
+    msg = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+    return msg.relative_alt / 1000.0  # in meters
+
+def stabilize_and_hover(master, start_time, hold_duration, 
+                        target_roll=0.0, target_pitch=0.0, 
+                        target_yaw=0.0, target_altitude=1.0):
     print("starting stabilization hover...")
 
-    # PID for roll and pitch (tune these!)
     pid_roll = PID(kp=3.0, ki=0.0, kd=0.5)
     pid_pitch = PID(kp=3.0, ki=0.0, kd=0.5)
+    pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)
+    pid_altitude = PID(kp=1.0, ki=0.2, kd=0.3)
 
     last_time = time.time()
     end_time = last_time + hold_duration
@@ -54,37 +61,47 @@ def stabilize_and_hover(master, start_time, hold_duration, target_roll=0.0, targ
         dt = current_time - last_time
         last_time = current_time
 
+        # Read sensors
         roll, pitch, yaw = get_attitude(master)
+        altitude = get_altitude(master)
 
-        # Compute error (target - current)
+        # Compute error
         error_roll = target_roll - roll
         error_pitch = target_pitch - pitch
+        error_yaw = target_yaw - yaw
+        error_yaw = (error_yaw + math.pi) % (2 * math.pi) - math.pi  # wrap [-π, π]
+        error_altitude = target_altitude - altitude
 
-        # PID corrections (in radians)
+        # PID control
         roll_correction = pid_roll.compute(error_roll, dt)
         pitch_correction = pid_pitch.compute(error_pitch, dt)
+        yaw_rate = pid_yaw.compute(error_yaw, dt)
+        thrust = 0.5 + pid_altitude.compute(error_altitude, dt)
 
-        # Limit correction to safe values (e.g., max ±5° or 0.087 rad)
+        # Clamp corrections
         roll_correction = max(min(roll_correction, 0.087), -0.087)
         pitch_correction = max(min(pitch_correction, 0.087), -0.087)
+        yaw_rate = max(min(yaw_rate, 1.0), -1.0)
+        thrust = max(min(thrust, 0.7), 0.4)  # prevent overthrust or cutoffs
 
-        # Convert corrected attitude to quaternion
+        # Quaternion from corrected roll/pitch and fixed yaw
         q = euler_to_quaternion(roll_correction, pitch_correction, target_yaw)
 
-        # Send attitude command
+        # Send attitude + yaw rate + thrust
         master.mav.set_attitude_target_send(
             int((time.time() - start_time) * 1000),
             master.target_system,
             master.target_component,
-            type_mask=0b10000000,
+            type_mask=0b00000100,  # yaw rate enabled
             q=q,
             body_roll_rate=0,
             body_pitch_rate=0,
-            body_yaw_rate=0,
-            thrust=0.52
+            body_yaw_rate=yaw_rate,
+            thrust=thrust
         )
 
         time.sleep(0.05)
+
 
 def send_heartbeat(master):
     while True:
