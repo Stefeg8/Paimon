@@ -1,7 +1,7 @@
 from pymavlink import mavutil
 import time
 import math
-from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Rotation as R, Slerp
 import numpy as np
 
 # Note: a reverse quaternion will effectively reverse the previous rotational command
@@ -37,6 +37,12 @@ def slerp(q1, q2, t):
     q2 = R.from_quat(q2)
     q_interp = R.slerp(t, [q1, q2]).as_quat()
     return q_interp
+
+def slerp_rotation(q1, q2, t):
+    """Interpolates between q1 and q2 using spherical linear interpolation."""
+    rot_seq = R.from_quat([q1, q2])  # Ensure q1 and q2 are [x, y, z, w]
+    slerp = Slerp([0, 1], rot_seq)
+    return slerp([t])[0].as_quat()
 
 def quaternion_to_euler(q):
     """
@@ -221,7 +227,8 @@ def look_rotation(direction_world, up=np.array([0, 0, 1])):
     rot_matrix = np.vstack([x, y, z]).T
     return R.from_matrix(rot_matrix).as_quat()
 
-def slerp_rotation(q_current, q_target, t):
+def slerp_rotation1(q_current, q_target, t):
+    # deprecated
     r_current = R.from_quat(q_current)
     r_target = R.from_quat(q_target)
     slerp = R.slerp(0, 1, [r_current, r_target])
@@ -393,46 +400,37 @@ def set_attitude1(master, pitch, yaw, thrust=0.5, duration=2):
         )
         time.sleep(0.02)  # 50Hz update rate
 
-def set_attitude(master, q, thrust=0.5, duration=2.0):
-    """
-    Set drone's attitude using a target quaternion (w, x, y, z).
+def set_attitude(master, quat, thrust=0.54):
+    if len(quat) == 4:
+        quat = [float(q) for q in quat]  # Convert to float
+        norm = math.sqrt(sum(q ** 2 for q in quat))
+        quat = [q / norm for q in quat]
 
-    :param master: MAVLink connection
-    :param q: Quaternion [w, x, y, z]
-    :param thrust: Thrust (0.0 - 1.0)
-    :param duration: Duration to maintain this attitude
-    """
-    if len(q) != 4:
-        raise ValueError("Quaternion must have 4 elements: [w, x, y, z]")
-
-    type_mask = 0b00000111  # Ignore roll, pitch, yaw rates
-
-    start_time = time.time()
-    while time.time() - start_time < duration:
-        master.mav.set_attitude_target_send(
-            int(time.time() * 1e6),           # time_boot_ms
-            master.target_system,
-            master.target_component,
-            type_mask,
-            q,                                # Quaternion (w, x, y, z)
-            0, 0, 0,                          # Roll/Pitch/Yaw rate (ignored)
-            thrust
-        )
-        time.sleep(0.02)
+    master.mav.set_attitude_target_send(
+        int(time.time() * 1000),
+        master.target_system,
+        master.target_component,
+        type_mask=0b00000111,  # ignore body rates
+        q=quat,
+        body_roll_rate=0,
+        body_pitch_rate=0,
+        body_yaw_rate=0,
+        thrust=thrust
+    )
 
 
 
 def get_pitch_increment(distance):
     # Distance thresholds
-    SAFE_DISTANCE = 220
-    CAUTION_DISTANCE = 180
-    CRITICAL_DISTANCE = 100
+    SAFE_DISTANCE = 270
+    CAUTION_DISTANCE = 260
+    CRITICAL_DISTANCE = 240
     if distance > SAFE_DISTANCE:
         return 0
     elif distance > CAUTION_DISTANCE:
-        return 5  # gentle pitch-up
+        return 9  # gentle pitch-up
     elif distance > CRITICAL_DISTANCE:
-        return 10  # more aggressive pitch-up
+        return 20  # more aggressive pitch-up
     else:
         return 0  # too close, hover
     

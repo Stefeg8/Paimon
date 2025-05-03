@@ -12,8 +12,12 @@ from pymavlink import mavutil
 from scipy.spatial.transform import Rotation as R
 import time
 
-master = mavutil.mavlink_connection("udp:127.0.0.1:14550") #should be port 14550 but check 
+print("Initializing connection")
+master = mavutil.mavlink_connection("COM4", baud=57600)
+print("working...")
 master.wait_heartbeat()
+print(f"connection established with system {master.target_system}")
+start_time = time.time()
 
 # Example Usage:
 #dmc.hold_pitch_angle(master, pitch_angle=15, duration=5)
@@ -46,6 +50,8 @@ from scipy.io.wavfile import write
 import os
 import subprocess
 
+resource_lock = threading.Lock()
+
 print("Available devices:")
 print(sd.query_devices())
 
@@ -73,8 +79,8 @@ process = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=WIDTH * HEIGHT *
 
 FS = 16000  # Sampling rate
 CHANNELS = 1  # Mono
-DURATION = 5  # Duration of each audio packet capture
-FILENAME = "output_files/recorded_audio.wav" 
+DURATION = 7  # Duration of each audio packet capture
+FILENAME = "recorded_audio.wav" 
 model = YOLO("src-jetson/inc/yolov10n.pt") 
 class_names_list = None
 with open('src-jetson/inc/coco.names', 'r') as f:  
@@ -171,114 +177,140 @@ def receive_audio(client_socket):
                 bytes_received += len(chunk)
             print(f"File received and saved as {output_file}.")
         play_audio(client_socket)
-        
-def capture_and_send_video(client_socket):
-    """Captures video frames, processes them, and sends them to the server."""
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS, VIDEO_FPS)
 
-    try:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            # YOLO Object Detection
-            results = model(frame)[0]
-            for result in results.boxes.data:
-                x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
-                if int(class_id) < len(class_names_list) and class_names_list[int(class_id)] == "person":
-                    center_x = (x_min + x_max) / 2
-                    center_y = (y_min + y_max) / 2
-                    directions(center_x, center_y)
+# Global variables for last known attitude and thrust
+last_quat = None
+last_thrust = None
+send_setpoint = False  
 
-    except Exception as e:
-        print(f"Video streaming error: {e}")
-    finally:
-        cap.release()
+# Function to continuously maintain OFFBOARD mode
+def maintain_offboard_mode(master):
+    while True:
+        if send_setpoint and last_quat is not None:
+            # Use the lock to ensure thread-safe access to shared resources
+            dmc.set_attitude(master, last_quat, last_thrust)
+        time.sleep(0.05)  # Send setpoint every 50ms (20 Hz)
 
-def run_yolo_on_image(image_path):
-    try:
-        frame = cv2.imread(image_path)
-        if frame is None:
-            print(f"Failed to read image {image_path}")
-            return
+def read_frame():
+    yuv_size = WIDTH * HEIGHT * 3 // 2
+    yuv_frame = process.stdout.read(yuv_size)
+    if len(yuv_frame) != yuv_size:
+        return None
+    yuv_np = np.frombuffer(yuv_frame, dtype=np.uint8).reshape((HEIGHT * 3 // 2, WIDTH))
+    bgr = cv2.cvtColor(yuv_np, cv2.COLOR_YUV2BGR_I420)
+    return bgr
 
-        # Resize frame if needed (optional, YOLO will auto-resize internally)
-        # resized_frame = cv2.resize(frame, (640, 480))
+def pipeline(frame):
+    results = model(frame)[0]
+    for result in results.boxes.data:
+        x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
+        if int(class_id) < len(class_names_list) and class_names_list[int(class_id)] == "person":
+            center_x = (x_min + x_max) / 2
+            center_y = (y_min + y_max) / 2
+            directions(center_x, center_y)
 
-        # YOLO inference
-        print("Yolo inference rn")
-        results = model(frame)[0]
-        for result in results.boxes.data:
-            x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
-            print("Inferenced")
-            if int(class_id) < len(class_names_list):
-                label = class_names_list[int(class_id)]
-                print(f"Detected {label} with confidence {confidence:.2f} at [{x_min}, {y_min}, {x_max}, {y_max}]")
-                x_deg_calc,y_deg_calc = pcalc.pixels_to_degrees((x_min+x_max)/2, (y_min+y_max)/2)
-                quaternion = dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc) 
-                norm_quaternion = dmc.normalize_quaternion(dmc.euler_to_quaternion(0,y_deg_calc, x_deg_calc))
-                curr_roll, curr_pitch, curr_yaw = dmc.get_current_attitude(master)
-                # calculating quaternion to pass to set_attitude 
-                q_current = dmc.get_current_attitude_quaternion(master) 
-                dir_cam = dmc.angles_to_direction_vector(x_deg_calc, y_deg_calc)
-                dir_world = dmc.camera_to_world_vector(dir_cam, q_current)
-                q_target = dmc.look_rotation(dir_world)
-                q_next = dmc.slerp_rotation(q_current, q_target, t=0.1) 
-                # lidar dist
-                distance, strength = ld.getTFminiData()
+def directions(x_deg_calc,y_deg_calc):
+    curr_roll, curr_pitch, curr_yaw = dmc.get_current_attitude(master)
+    q_current = dmc.get_current_attitude_quaternion(master) 
+    dir_cam = dmc.angles_to_direction_vector(x_deg_calc, y_deg_calc)
+    dir_world = dmc.camera_to_world_vector(dir_cam, q_current)
+    q_target = dmc.look_rotation(dir_world)
+    q_next = dmc.slerp_rotation(q_current, q_target, t=0.1) 
+    # lidar dist
+    distance, strength = ld.getTFminiData()
 
-                # Distance thresholds for reference(in cm)
-                SAFE_DISTANCE = 220
-                CAUTION_DISTANCE = 180
-                CRITICAL_DISTANCE = 100
-                MAX_PITCH = 20
+    # Distance thresholds for reference(in cm)
+    SAFE_DISTANCE = 270
+    CRITICAL_DISTANCE = 240
+    MAX_PITCH = 20
 
-                pitch_increment = dmc.get_pitch_increment(distance)
-                if pitch_increment == 0:
-                    if distance > SAFE_DISTANCE:
-                        # All clear – use q_next (whatever is pre-calculated for next move)
-                        dmc.set_attitude(master, q_next)
-                    else:
-                        # Too close – hover to avoid collision
-                        hover_quat = R.from_euler('xyz', [0, 0, 0], degrees=True).as_quat()
-                        dmc.set_attitude(master, hover_quat)
+    pitch_increment = dmc.get_pitch_increment(distance)
+    hover_quat = R.from_euler('xyz', [0, 0, 0], degrees=True).as_quat()
+    
+    if distance <= CRITICAL_DISTANCE:
+        dmc.set_attitude(master, hover_quat, thrust=0.54)
+        return
 
-                if curr_pitch + pitch_increment <= MAX_PITCH:
-                    q_pitch_up = dmc.pitch_up_calc(q_current, pitch_increment)
-                    dmc.set_attitude(master, q_pitch_up)
-                else:
-                    dmc.set_attitude(master,q_current)
-                # send movement command here
-                # dir_movement((x_min+x_max)/2,100)  # deprecated
-
-    except Exception as e:
-        print(f"Error during YOLO inference: {e}")
-
+    if pitch_increment == 0:
+        if distance > SAFE_DISTANCE:
+            dmc.set_attitude(master, q_next, thrust=0.56)
+        else:
+            dmc.set_attitude(master, hover_quat, thrust=0.54)
+    else:
+        if curr_pitch + pitch_increment <= MAX_PITCH:
+            q_pitch_up = dmc.pitch_up_calc(q_current, pitch_increment)
+            dmc.set_attitude(master, q_pitch_up, thrust=0.56)
+        else:
+            dmc.set_attitude(master, q_current, thrust=0.54)
 
 def capture_and_send_video_lib(client_socket):
-    duration=5
-    fps=2
-    output_dir="captured_images"
-    os.makedirs(output_dir, exist_ok=True)  # Create the output directory if it doesn't exist
-    interval = 1.0 / fps  # Time between captures in seconds
-    start_time = time.time()
-
     while True:
-        timestamp = int(time.time() * 1000)  # Unique timestamp for filename
-        image_path = os.path.join(output_dir, f"frame_{timestamp}.jpg")
-        
-        # Capture the image using libcamera-still
-        cmd = ["libcamera-still", "-n", "-o", image_path]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        print(f"Captured image: {image_path}")
-        run_yolo_on_image(image_path)  # Run YOLO inference on the captured image
+        frame = read_frame()
+        if frame is None:
+            break
 
-        time.sleep(interval)  # Maintain consistent FPS
+        # Process frame with YOLO
+        pipeline(frame)
+
+    cv2.destroyAllWindows()
+    process.terminate()
+
+def start_offboard_thread(master):
+    thread = threading.Thread(target=maintain_offboard_mode, args=(master,))
+    thread.daemon = True
+    thread.start()
+
+def send_heartbeat(master):
+    while True:
+        master.mav.heartbeat_send(
+            mavutil.mavlink.MAV_TYPE_GCS,
+            mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+            0, 0, 0
+        )
+        time.sleep(1)
+
+def ramp_up_drone(master):
+    heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
+    heartbeat_thread.start()
+
+    # Arm the drone
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        0,
+        1,
+        0, 0, 0, 0, 0, 0
+    )
+    print("drone armed")
+    time.sleep(3)
+    print("sending pre-offboard attitude targets")
+    for _ in range(20):
+        master.mav.set_attitude_target_send(
+            int((time.time() - start_time) * 1000),
+            master.target_system,
+            master.target_component,
+            type_mask = 0b00000111  # ignore body rates, use quaternion + thrust
+    ,
+            q=[1, 0, 0, 0],
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
+            thrust=0.0
+        )
+        time.sleep(0.05)
+    print("switching to OFFBOARD mode")
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        6,  # OFFBOARD mode number in PX4
+        0, 0, 0, 0, 0
+    )
+    time.sleep(1)
+    print("OFFBOARD mode set")
 
 def main():
     """Main function to start threads for audio and video streaming."""
@@ -290,7 +322,8 @@ def main():
         print("Connected to server.")
 
         #initialize offboard mode
-        dmc.initialize_offboard(master)
+        #dmc.initialize_offboard(master)
+        ramp_up_drone(master)
         
         # Create and start threads
         audio_thread = threading.Thread(target=record_and_send_audio1, args=(client_socket,)) 
@@ -299,6 +332,7 @@ def main():
         audio_thread.start()
         #receive_thread.start()
         video_thread.start()
+        start_offboard_thread(master)
 
         # Wait for threads to complete
         audio_thread.join()

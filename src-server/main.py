@@ -186,7 +186,7 @@ def handle_client(client_socket):
                 generate_and_send_tts(client_socket, transcribed_text["text"])
             else:
                 print("No transcription gotten.")
-                generate_and_send_tts(client_socket, "No audio was received. Please speak louder traveler")
+                generate_and_send_tts(client_socket, "I didn't hear that traveler. Can you say that again?")
 
     except Exception as e:
         print(f"Error in client handling: {e}")
@@ -210,6 +210,6 @@ if __name__ == '__main__':
     engine = CoquiEngine() 
     stream = TextToAudioStream(engine)
     print("Warmup speech)")
-    tts.tts_to_file(text="How is your day today traveler. How may I assist you?", speaker_wav=["emily1.wav"], language="en", file_path="output_files/warmup_speech.wav")
+    tts.tts_to_file(text="How is your day today traveler. How may I assist you?", speaker_wav=["emily1.wav"], language="en", file_path="warmup_speech.wav")
     with model.chat_session(system_template, prompt_template):
         start_server()
