@@ -1,6 +1,7 @@
 import subprocess
 import cv2
 import numpy as np
+from ultralytics import YOLO
 
 # Set resolution
 WIDTH = 1280
@@ -18,6 +19,11 @@ cmd = [
 ]
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=WIDTH * HEIGHT * 3 // 2)
 
+model = YOLO("inc/yolov10n.pt") 
+class_names_list = None
+with open('coco_test.names', 'r') as f:  
+    class_names_list = [line.strip() for line in f.readlines()]
+
 # Function to read YUV420 frames and convert to BGR
 def read_frame():
     yuv_size = WIDTH * HEIGHT * 3 // 2
@@ -27,6 +33,15 @@ def read_frame():
     yuv_np = np.frombuffer(yuv_frame, dtype=np.uint8).reshape((HEIGHT * 3 // 2, WIDTH))
     bgr = cv2.cvtColor(yuv_np, cv2.COLOR_YUV2BGR_I420)
     return bgr
+
+def pipeline():
+    results = model(frame)[0]
+    for result in results.boxes.data:
+        x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
+        if int(class_id) < len(class_names_list) and class_names_list[int(class_id)] == "person":
+            center_x = (x_min + x_max) / 2
+            center_y = (y_min + y_max) / 2
+            print(center_x,center_y)
 
 while True:
     frame = read_frame()
