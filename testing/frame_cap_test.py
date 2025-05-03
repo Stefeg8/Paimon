@@ -34,7 +34,7 @@ def read_frame():
     bgr = cv2.cvtColor(yuv_np, cv2.COLOR_YUV2BGR_I420)
     return bgr
 
-def pipeline():
+def pipeline(frame):
     results = model(frame)[0]
     for result in results.boxes.data:
         x_min, y_min, x_max, y_max, confidence, class_id = result.tolist()
@@ -49,6 +49,7 @@ while True:
         break
 
     # TODO: YOLOv10 detection here
+    pipeline(frame)
     cv2.imshow('Camera', frame)
     if cv2.waitKey(1) == 27:
         break
