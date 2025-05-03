@@ -19,9 +19,9 @@ cmd = [
 ]
 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=WIDTH * HEIGHT * 3 // 2)
 
-model = YOLO("inc/yolov10n.pt") 
+model = YOLO("testing/yolov10n.pt") 
 class_names_list = None
-with open('coco_test.names', 'r') as f:  
+with open('testing/coco_test.names', 'r') as f:  
     class_names_list = [line.strip() for line in f.readlines()]
 
 # Function to read YUV420 frames and convert to BGR
