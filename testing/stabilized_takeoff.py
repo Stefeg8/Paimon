@@ -2,6 +2,90 @@ from pymavlink import mavutil
 import time
 import threading
 
+class PID:
+    def __init__(self, kp, ki, kd):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.prev_error = 0
+        self.integral = 0
+
+    def compute(self, error, dt):
+        self.integral += error * dt
+        derivative = (error - self.prev_error) / dt if dt > 0 else 0
+        output = self.kp * error + self.ki * self.integral + self.kd * derivative
+        self.prev_error = error
+        return output
+
+import math
+
+def euler_to_quaternion(roll, pitch, yaw):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    q = [
+        cr * cp * cy + sr * sp * sy,
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy
+    ]
+    return q
+
+def get_attitude(master):
+    msg = master.recv_match(type='ATTITUDE', blocking=True)
+    return msg.roll, msg.pitch, msg.yaw  # In radians
+
+def stabilize_and_hover(master, start_time, hold_duration, target_roll=0.0, target_pitch=0.0, target_yaw=0.0):
+    print("starting stabilization hover...")
+
+    # PID for roll and pitch (tune these!)
+    pid_roll = PID(kp=3.0, ki=0.0, kd=0.5)
+    pid_pitch = PID(kp=3.0, ki=0.0, kd=0.5)
+
+    last_time = time.time()
+    end_time = last_time + hold_duration
+
+    while time.time() < end_time:
+        current_time = time.time()
+        dt = current_time - last_time
+        last_time = current_time
+
+        roll, pitch, yaw = get_attitude(master)
+
+        # Compute error (target - current)
+        error_roll = target_roll - roll
+        error_pitch = target_pitch - pitch
+
+        # PID corrections (in radians)
+        roll_correction = pid_roll.compute(error_roll, dt)
+        pitch_correction = pid_pitch.compute(error_pitch, dt)
+
+        # Limit correction to safe values (e.g., max ±5° or 0.087 rad)
+        roll_correction = max(min(roll_correction, 0.087), -0.087)
+        pitch_correction = max(min(pitch_correction, 0.087), -0.087)
+
+        # Convert corrected attitude to quaternion
+        q = euler_to_quaternion(roll_correction, pitch_correction, target_yaw)
+
+        # Send attitude command
+        master.mav.set_attitude_target_send(
+            int((time.time() - start_time) * 1000),
+            master.target_system,
+            master.target_component,
+            type_mask=0b10000000,
+            q=q,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
+            thrust=0.52
+        )
+
+        time.sleep(0.05)
+
 def send_heartbeat(master):
     while True:
         master.mav.heartbeat_send(
@@ -48,22 +132,8 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
         )
         time.sleep(0.05)
 
-    # Hover
-    print("hovering")
-    hover_end = time.time() + hold_duration
-    while time.time() < hover_end:
-        master.mav.set_attitude_target_send(
-            int((time.time() - start_time) * 1000),
-            master.target_system,
-            master.target_component,
-            type_mask=0b10000000,
-            q=[1, 0, 0, 0],
-            body_roll_rate=0,
-            body_pitch_rate=0,
-            body_yaw_rate=0,
-            thrust=0.52
-        )
-        time.sleep(0.05)
+    
+    stabilize_and_hover(master, start_time, hold_duration)
 
     # Ramp down
     print("ramping down thrust")
