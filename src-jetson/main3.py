@@ -20,6 +20,8 @@ master.wait_heartbeat()
 print(f"connection established with system {master.target_system}")
 start_time = time.time()
 
+import signal
+import sys
 import socket
 import sounddevice as sd
 import numpy as np
@@ -299,6 +301,62 @@ def ramp_up_drone(master):
     time.sleep(1)
     print("OFFBOARD mode set")
 
+def shutdown_procedure():
+    global process, master
+
+    print("\n[!] Shutdown initiated. Cleaning up...")
+        # Ramp down
+    print("ramping down thrust")
+    time2 = time.time()
+    duration = 10  # seconds
+
+    while time.time() - time2 < duration:
+        master.mav.set_attitude_target_send(
+            int((time.time() - start_time) * 1000),  # time_boot_ms
+            master.target_system,
+            master.target_component,
+            type_mask=0b00000111,  # ignore body rates, use quaternion + thrust
+            q=[1, 0, 0, 0],  # no rotation
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
+            thrust=0.51
+        )
+        time.sleep(0.05)
+    # Disarm the drone safely
+    try:
+        print("[>] Disarming drone...")
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            0,
+            0,  # disarm
+            0, 0, 0, 0, 0, 0
+        )
+        time.sleep(1)
+        print("[✓] Drone disarmed.")
+    except Exception as e:
+        print(f"[X] Error disarming drone: {e}")
+
+    # Terminate camera subprocess
+    if process:
+        print("[>] Terminating camera process...")
+        process.terminate()
+        process.wait()
+        print("[✓] Camera process terminated.")
+
+    # Optional: Clean up any GPIO, files, etc.
+    print("[✓] All systems safely shut down.")
+    sys.exit(0)
+
+# Attach signal handler
+def signal_handler(sig, frame):
+    shutdown_procedure()
+
+signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # kill PID
+
 def main():
     """Main function to start threads for audio and video streaming."""
     print(f"Connecting to server at {SERVER_IP}:{SERVER_PORT}...")
@@ -330,5 +388,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except KeyboardInterrupt:
+        shutdown_procedure()
     except Exception as e:
         print(f"Failed to start: {e}")
+        shutdown_procedure()
