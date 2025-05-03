@@ -1,6 +1,7 @@
 from pymavlink import mavutil
 import time
 import threading
+import math
 
 def send_heartbeat(master):
     while True:
@@ -64,6 +65,27 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             body_roll_rate=0,
             body_pitch_rate=0,
             body_yaw_rate=0,
+            thrust=0.54
+        )
+        time.sleep(0.05)
+    
+    # Pitch forward (5 degrees) using quaternion
+    print("pitching forward")
+    pitch_degrees = -13  # negative for pitching down
+    pitch_radians = pitch_degrees * (3.14159265 / 180)
+    q = [math.cos(pitch_radians / 2), 0, math.sin(pitch_radians / 2), 0]  # [w, x, y, z] quaternion for pitch
+
+    forward_end = time.time() + 2  # move forward for 2 seconds
+    while time.time() < forward_end:
+        master.mav.set_attitude_target_send(
+            int((time.time() - start_time) * 1000),
+            master.target_system,
+            master.target_component,
+            type_mask = 0b00000111,
+            q=q,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=0,
             thrust=0.55
         )
         time.sleep(0.05)
@@ -81,7 +103,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             body_roll_rate=0,
             body_pitch_rate=0,
             body_yaw_rate=0,
-            thrust=0.49
+            thrust=0.51
         )
         time.sleep(0.05)
 
