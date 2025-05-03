@@ -78,7 +78,7 @@ def generate_response(user_input):
         # Change temperature(temp) for more creative responses. Top_k, top_p, min_p, and repeat_penalty are all hyperparameters
         # Read documentation for further reference. 
         # https://docs.gpt4all.io/gpt4all_python/ref.html#gpt4all.gpt4all.GPT4All.generate
-        response = model.generate(user_input, max_tokens=200, temp=1.1, top_k = 80, top_p = 0.85, min_p = 0.045, repeat_penalty = 2.1, n_batch=16)
+        response = model.generate(user_input, max_tokens=200, temp=0.9, top_k = 50, top_p = 0.45, min_p = 0.015, repeat_penalty = 2.1, n_batch=16)
         response_automated = f"{response}"
         return response_automated
 
