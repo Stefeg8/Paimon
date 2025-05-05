@@ -47,6 +47,68 @@ def get_altitude(master):
     msg = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
     return msg.relative_alt / 1000.0  # in meters
 
+def stabilize_position_hover(master, start_time, hold_duration, 
+                             target_x=0.0, target_y=0.0, target_z=-1.0,
+                             target_yaw=0.0):
+    print("Starting full position-stabilized hover...")
+
+    # PID controllers
+    pid_x = PID(kp=1.0, ki=0.0, kd=0.2)       # x → pitch
+    pid_y = PID(kp=1.0, ki=0.0, kd=0.2)       # y → roll
+    pid_z = PID(kp=1.0, ki=0.2, kd=0.3)       # z → thrust
+    pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)     # yaw → yaw rate
+
+    last_time = time.time()
+    end_time = last_time + hold_duration
+
+    while time.time() < end_time:
+        current_time = time.time()
+        dt = current_time - last_time
+        last_time = current_time
+
+        # Read current pose
+        x, y, z = get_local_position(master)      # NED frame: z is negative up
+        roll, pitch, yaw = get_attitude(master)
+
+        # Compute position errors
+        error_x = target_x - x
+        error_y = target_y - y
+        error_z = target_z - z
+
+        # Compute yaw error (wrap to [-π, π])
+        error_yaw = (target_yaw - yaw + math.pi) % (2 * math.pi) - math.pi
+
+        # PID outputs
+        pitch_command = pid_x.compute(error_x, dt)   # X → pitch (forward/back)
+        roll_command = pid_y.compute(error_y, dt)    # Y → roll (left/right)
+        thrust = 0.5 + pid_z.compute(error_z, dt)    # Z → thrust
+        yaw_rate = pid_yaw.compute(error_yaw, dt)
+
+        # Clamp pitch and roll to safe range (±5° or ≈ 0.087 rad)
+        pitch_command = max(min(pitch_command, 0.087), -0.087)
+        roll_command = max(min(roll_command, 0.087), -0.087)
+        thrust = max(min(thrust, 0.7), 0.4)  # Clamp thrust for stability
+        yaw_rate = max(min(yaw_rate, 1.0), -1.0)
+
+        # Quaternion from euler angles (commanded roll, pitch, yaw)
+        q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
+
+        # Send attitude target
+        master.mav.set_attitude_target_send(
+            int((time.time() - start_time) * 1000),
+            master.target_system,
+            master.target_component,
+            type_mask=0b00000100,  # Yaw rate enabled
+            q=q,
+            body_roll_rate=0,
+            body_pitch_rate=0,
+            body_yaw_rate=yaw_rate,
+            thrust=thrust
+        )
+
+        time.sleep(0.05)
+
+
 def stabilize_and_hover(master, start_time, hold_duration, 
                         target_roll=0.0, target_pitch=0.0, 
                         target_yaw=0.0, target_altitude=1.0):
@@ -132,6 +194,11 @@ def send_thrust(master, start_time, thrust, duration):
         )
         time.sleep(0.05)  # 20 Hz
 
+def get_local_position(master):
+    # You must have subscribed to LOCAL_POSITION_NED MAVLink message
+    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
+    return msg.x, msg.y, msg.z  # in meters, z is negative up
+
 def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_duration=3, hold_duration=2):
     steps = int(ramp_duration / 0.05) 
     thrust_values_up = [i * (takeoff_thrust / steps) for i in range(steps + 1)]
@@ -154,7 +221,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
         time.sleep(0.05)
 
     
-    stabilize_and_hover(master, start_time, hold_duration)
+    stabilize_position_hover(master, start_time, hold_duration)
 
     # Ramp down
     print("ramping down thrust")
@@ -181,6 +248,15 @@ master.wait_heartbeat()
 print(f"connection established with system {master.target_system}")
 
 start_time = time.time()
+
+# Start streaming position data 
+master.mav.request_data_stream_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+    10,  # 10 Hz update rate
+    1    # start stream
+)
 
 # Start sending heartbeats in the background
 heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
