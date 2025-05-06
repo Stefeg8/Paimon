@@ -35,9 +35,11 @@ def euler_to_quaternion(roll, pitch, yaw):
     ]
     return q
 
-def get_local_position(master):
-    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
-    return msg.x, msg.y, msg.z  # z is negative upward (NED frame)
+def get_local_position(master, timeout=0.5):
+    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True, timeout=timeout)
+    if msg is None:
+        raise RuntimeError("No LOCAL_POSITION_NED received!")
+    return msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz
 
 def get_attitude(master):
     msg = master.recv_match(type='ATTITUDE', blocking=True)
@@ -47,108 +49,68 @@ def get_altitude(master):
     msg = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
     return msg.relative_alt / 1000.0  # in meters
 
-#This function is more precise. it uses gps positioning to actually hover in place
-def stabilize_position_hover(master, start_time, hold_duration, 
-                             target_x=0.0, target_y=0.0, target_z=-1.0,
-                             target_yaw=0.0):
-    print("Starting full position-stabilized hover...")
+def stabilize_position_hover_v2(master, start_time, hold_duration,
+                                 target_x=0.0, target_y=0.0, target_z=-1.0,
+                                 target_yaw=0.0):
+    print("Starting advanced position-stabilized hover...")
 
-    # PID controllers
-    pid_x = PID(kp=1.0, ki=0.0, kd=0.2)    
-    pid_y = PID(kp=1.0, ki=0.0, kd=0.2)  
-    pid_z = PID(kp=1.0, ki=0.2, kd=0.3)    
-    pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)   
+    # Outer PID 
+    pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
+    pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
+    pid_pos_z = PID(kp=2.0, ki=0.4, kd=0.5)
+
+    # Inner PID 
+    pid_vel_x = PID(kp=1.0, ki=0.0, kd=0.2)
+    pid_vel_y = PID(kp=1.0, ki=0.0, kd=0.2)
+    pid_vel_z = PID(kp=1.0, ki=0.1, kd=0.3)
+
+    pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)
 
     last_time = time.time()
     end_time = last_time + hold_duration
 
+    last_x, last_y, last_z, vx, vy, vz = get_local_position(master)
+
     while time.time() < end_time:
         current_time = time.time()
         dt = current_time - last_time
+        if dt == 0:
+            continue
         last_time = current_time
 
-        # negative z is up
-        x, y, z = get_local_position(master)     
+        x, y, z, vx, vy, vz = get_local_position(master)
         roll, pitch, yaw = get_attitude(master)
 
-        error_x = target_x - x
-        error_y = target_y - y
-        error_z = target_z - z
+        # pos velo setpoint
+        sp_vx = pid_pos_x.compute(target_x - x, dt)
+        sp_vy = pid_pos_y.compute(target_y - y, dt)
+        sp_vz = pid_pos_z.compute(target_z - z, dt)
+
+        # clamp velocity setpoints
+        sp_vx = max(min(sp_vx, 1.0), -1.0)
+        sp_vy = max(min(sp_vy, 1.0), -1.0)
+        sp_vz = max(min(sp_vz, 1.0), -1.0)
+
+        pitch_command = pid_vel_x.compute(sp_vx - vx, dt)
+        roll_command = pid_vel_y.compute(sp_vy - vy, dt)
+        thrust = 0.5 + pid_vel_z.compute(sp_vz - vz, dt)
 
         error_yaw = (target_yaw - yaw + math.pi) % (2 * math.pi) - math.pi
-
-        pitch_command = pid_x.compute(error_x, dt) 
-        roll_command = pid_y.compute(error_y, dt)   
-        thrust = 0.5 + pid_z.compute(error_z, dt)   
         yaw_rate = pid_yaw.compute(error_yaw, dt)
 
-        # Clamp pitch and roll to safe range (±5° or ≈ 0.087 rad) - GPT did this not sure if this is actually safe
+        # Clamp
+        roll_command = max(min(roll_command, 0.087), -0.087)  # ~5°
         pitch_command = max(min(pitch_command, 0.087), -0.087)
-        roll_command = max(min(roll_command, 0.087), -0.087)
-        thrust = max(min(thrust, 0.7), 0.4) 
+        thrust = max(min(thrust, 0.7), 0.4)
         yaw_rate = max(min(yaw_rate, 1.0), -1.0)
 
         q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
-
+        
         master.mav.set_attitude_target_send(
             int((time.time() - start_time) * 1000),
             master.target_system,
             master.target_component,
             type_mask=0b00000100,
-            q=q,
-            body_roll_rate=0,
-            body_pitch_rate=0,
-            body_yaw_rate=yaw_rate,
-            thrust=thrust
-        )
-
-        time.sleep(0.05)
-
-
-def stabilize_and_hover(master, start_time, hold_duration, 
-                        target_roll=0.0, target_pitch=0.0, 
-                        target_yaw=0.0, target_altitude=1.0):
-    print("starting stabilization hover...")
-
-    pid_roll = PID(kp=3.0, ki=0.0, kd=0.5)
-    pid_pitch = PID(kp=3.0, ki=0.0, kd=0.5)
-    pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)
-    pid_altitude = PID(kp=1.0, ki=0.2, kd=0.3)
-
-    last_time = time.time()
-    end_time = last_time + hold_duration
-
-    while time.time() < end_time:
-        current_time = time.time()
-        dt = current_time - last_time
-        last_time = current_time
-
-        roll, pitch, yaw = get_attitude(master)
-        altitude = get_altitude(master)
-
-        error_roll = target_roll - roll
-        error_pitch = target_pitch - pitch
-        error_yaw = target_yaw - yaw
-        error_yaw = (error_yaw + math.pi) % (2 * math.pi) - math.pi 
-        error_altitude = target_altitude - altitude
-
-        roll_correction = pid_roll.compute(error_roll, dt)
-        pitch_correction = pid_pitch.compute(error_pitch, dt)
-        yaw_rate = pid_yaw.compute(error_yaw, dt)
-        thrust = 0.5 + pid_altitude.compute(error_altitude, dt)
-
-        roll_correction = max(min(roll_correction, 0.087), -0.087)
-        pitch_correction = max(min(pitch_correction, 0.087), -0.087)
-        yaw_rate = max(min(yaw_rate, 1.0), -1.0)
-        thrust = max(min(thrust, 0.7), 0.4)
-
-        q = euler_to_quaternion(roll_correction, pitch_correction, target_yaw)
-
-        master.mav.set_attitude_target_send(
-            int((time.time() - start_time) * 1000),
-            master.target_system,
-            master.target_component,
-            type_mask=0b00000100, 
             q=q,
             body_roll_rate=0,
             body_pitch_rate=0,
