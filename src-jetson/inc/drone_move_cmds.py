@@ -418,8 +418,6 @@ def set_attitude(master, quat, thrust=0.54):
         thrust=thrust
     )
 
-
-
 def get_pitch_increment(distance):
     # Distance thresholds
     SAFE_DISTANCE = 270

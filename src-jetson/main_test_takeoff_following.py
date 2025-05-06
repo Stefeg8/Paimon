@@ -41,12 +41,6 @@ resource_lock = threading.Lock()
 print("Available devices:")
 print(sd.query_devices())
 
-
-# config
-SERVER_IP = '169.231.9.9'  
-SERVER_PORT = 42069 
-BUFFER_SIZE = 1024  #packet size
-
 # Video config
 WIDTH = 1280
 HEIGHT = 720
@@ -341,23 +335,17 @@ signal.signal(signal.SIGTERM, signal_handler)  # kill PID
 
 def main():
     """Main function to start threads for audio and video streaming."""
-    print(f"Connecting to server at {SERVER_IP}:{SERVER_PORT}...")
     
-    # Connect to server
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect((SERVER_IP, SERVER_PORT))
-        print("Connected to server.")
-
-        #initialize offboard mode
-        #dmc.initialize_offboard(master)
-        ramp_up_drone(master)
-        
-        #receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
-        video_thread = threading.Thread(target=capture_and_send_video_lib, args=(client_socket,))
-        #receive_thread.start()
-        video_thread.start()
-        #receive_thread.join()
-        video_thread.join()
+    #initialize offboard mode
+    #dmc.initialize_offboard(master)
+    ramp_up_drone(master)
+    
+    #receive_thread = threading.Thread(target=receive_audio, args=(client_socket,))
+    video_thread = threading.Thread(target=capture_and_send_video_lib)
+    #receive_thread.start()
+    video_thread.start()
+    #receive_thread.join()
+    video_thread.join()
 
 
 if __name__ == "__main__":
