@@ -105,7 +105,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         yaw_rate = max(min(yaw_rate, 1.0), -1.0)
 
         q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
-        
+
         master.mav.set_attitude_target_send(
             int((time.time() - start_time) * 1000),
             master.target_system,
@@ -151,7 +151,7 @@ def get_local_position(master):
     msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
     return msg.x, msg.y, msg.z  # in meters, z is negative up
 
-def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_duration=3, hold_duration=2):
+def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_duration=3, hold_duration=5):
     steps = int(ramp_duration / 0.05) 
     thrust_values_up = [i * (takeoff_thrust / steps) for i in range(steps + 1)]
     thrust_values_down = list(reversed(thrust_values_up))
