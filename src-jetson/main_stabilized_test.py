@@ -95,8 +95,16 @@ def maintain_offboard_mode(master):
                 dmc.set_attitude(master, last_quat, last_thrust)
         time.sleep(0.05)
 
-# Main detection and tracking logic
+def send_heartbeat(master):
+    while True:
+        master.mav.heartbeat_send(
+            mavutil.mavlink.MAV_TYPE_GCS,
+            mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+            0, 0, 0
+        )
+        time.sleep(1)
 
+# Main detection and tracking logic
 def detect_and_follow():
     global last_quat, last_thrust
     target_bbox_height = 300  # Ideal height of person bbox in pixels
@@ -153,6 +161,63 @@ def signal_handler(sig, frame):
 
 # Register the signal handler
 signal.signal(signal.SIGINT, signal_handler)
+
+
+# Start streaming position data 
+master.mav.request_data_stream_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+    10,  # 10 Hz update rate
+    1    # start stream
+)
+
+# Start sending heartbeats in the background
+heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
+heartbeat_thread.start()
+
+
+# Arm the drone
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+    0,
+    1,
+    0, 0, 0, 0, 0, 0
+)
+print("drone armed")
+time.sleep(3)
+
+# Send a few setpoints before switching to Offboard (PX4 requires it)
+print("sending pre-offboard attitude targets")
+for _ in range(20):
+    master.mav.set_attitude_target_send(
+        int((time.time() - start_time) * 1000),
+        master.target_system,
+        master.target_component,
+        type_mask=0b10000000,
+        q=[1, 0, 0, 0],
+        body_roll_rate=0,
+        body_pitch_rate=0,
+        body_yaw_rate=0,
+        thrust=0.0
+    )
+    time.sleep(0.05)
+
+# Switch to OFFBOARD mode (custom mode 6 in PX4)
+print("switching to OFFBOARD mode")
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+    0,
+    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+    6,  # OFFBOARD mode number in PX4
+    0, 0, 0, 0, 0
+)
+time.sleep(1)
+print("OFFBOARD mode set")
 
 # Start threads
 stabilization_thread = threading.Thread(target=stabilize_attitude, daemon=True)
