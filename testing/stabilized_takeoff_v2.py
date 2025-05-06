@@ -173,7 +173,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
         time.sleep(0.05)
 
     
-    stabilize_position_hover(master, start_time, hold_duration)
+    stabilize_position_hover_v2(master, start_time, hold_duration)
 
     # Ramp down
     print("ramping down thrust")
