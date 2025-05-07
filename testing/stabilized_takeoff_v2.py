@@ -34,12 +34,17 @@ def euler_to_quaternion(roll, pitch, yaw):
         cr * cp * sy - sr * sp * cy
     ]
     return q
-
+_last_known_local_position = [0, 0, 0, 0, 0, 0]
 def get_local_position(master, timeout=0.5):
+    global _last_known_local_position
     msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True, timeout=timeout)
-    if msg is None:
-        raise RuntimeError("No LOCAL_POSITION_NED received!")
-    return msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz
+    if msg is not None:
+        _last_known_local_position = [msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz]
+        print("DEBUG msg:", msg)
+        print("DEBUG fields:", msg.to_dict().keys())
+    else:
+        print("Warning: No LOCAL_POSITION_NED received. Using last known position.")
+    return _last_known_local_position
 
 def get_attitude(master):
     msg = master.recv_match(type='ATTITUDE', blocking=True)
@@ -50,19 +55,20 @@ def get_altitude(master):
     return msg.relative_alt / 1000.0  # in meters
 
 def stabilize_position_hover_v2(master, start_time, hold_duration,
-                                 target_x=0.0, target_y=0.0, target_z=-1.0,
+                                 target_x=0.0, target_y=0.0,
                                  target_yaw=0.0):
     print("Starting advanced position-stabilized hover...")
-
+    _, _, initial_z, *_ = get_local_position(master)
+    target_z = initial_z + 1.0
     # Outer PID 
     pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
     pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
-    pid_pos_z = PID(kp=2.0, ki=0.4, kd=0.5)
+    pid_pos_z = PID(kp=1.0, ki=0.1, kd=0.3)
 
     # Inner PID 
     pid_vel_x = PID(kp=1.0, ki=0.0, kd=0.2)
     pid_vel_y = PID(kp=1.0, ki=0.0, kd=0.2)
-    pid_vel_z = PID(kp=1.0, ki=0.1, kd=0.3)
+    pid_vel_z = PID(kp=0.8, ki=0.05, kd=0.2)
 
     pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)
 
@@ -101,7 +107,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         # Clamp
         roll_command = max(min(roll_command, 0.087), -0.087)  # ~5°
         pitch_command = max(min(pitch_command, 0.087), -0.087)
-        thrust = max(min(thrust, 0.7), 0.4)
+        thrust = max(min(thrust, 0.6), 0.45)
         yaw_rate = max(min(yaw_rate, 1.0), -1.0)
 
         q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
@@ -146,11 +152,6 @@ def send_thrust(master, start_time, thrust, duration):
         )
         time.sleep(0.05)  # 20 Hz
 
-def get_local_position(master):
-    # You must have subscribed to LOCAL_POSITION_NED MAVLink message
-    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True)
-    return msg.x, msg.y, msg.z  # in meters, z is negative up
-
 def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_duration=3, hold_duration=5):
     steps = int(ramp_duration / 0.05) 
     thrust_values_up = [i * (takeoff_thrust / steps) for i in range(steps + 1)]
@@ -187,7 +188,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             body_roll_rate=0,
             body_pitch_rate=0,
             body_yaw_rate=0,
-            thrust=0.49
+            thrust=0.45
         )
         time.sleep(0.05)
 
@@ -209,6 +210,12 @@ master.mav.request_data_stream_send(
     10,  # 10 Hz update rate
     1    # start stream
 )
+print("Waiting for valid LOCAL_POSITION_NED...")
+while True:
+    pos = master.recv_match(type='LOCAL_POSITION_NED', blocking=True, timeout=0.5)
+    if pos is not None:
+        print("Valid local position received.")
+        break
 
 # Start sending heartbeats in the background
 heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
@@ -258,7 +265,7 @@ print("OFFBOARD mode set")
 
 # Takeoff simulation
 # Pass takeoff_thrust as the 3rd argument to get a custom thrust value. Default is 0.6 in the function
-takeoff_thrust = 0.54 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
+takeoff_thrust = 0.52 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
 ramp_duration = 10 # Adjust this value as needed. its how long it takes for the drone to go up from 0 thrust to takeoff thrust. don't really need to change this though
 simulate_takeoff_and_landing(master, start_time, takeoff_thrust, ramp_duration)
 #simulate_takeoff_and_landing(master, start_time) # this is the default function. you can use this if you want. 

@@ -1,4 +1,5 @@
 from pymavlink import mavutil
+
 import time
 import threading
 
@@ -61,7 +62,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             body_roll_rate=0,
             body_pitch_rate=0,
             body_yaw_rate=0,
-            thrust=0.52
+            thrust=0.50
         )
         time.sleep(0.05)
 
@@ -77,7 +78,7 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
             body_roll_rate=0,
             body_pitch_rate=0,
             body_yaw_rate=0,
-            thrust=0.49
+            thrust=0.46
         )
         time.sleep(0.05)
 
@@ -139,7 +140,7 @@ print("OFFBOARD mode set")
 
 # Takeoff simulation
 # Pass takeoff_thrust as the 3rd argument to get a custom thrust value. Default is 0.6 in the function
-takeoff_thrust = 0.53 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
+takeoff_thrust = 0.51 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
 ramp_duration = 10 # Adjust this value as needed. its how long it takes for the drone to go up from 0 thrust to takeoff thrust. don't really need to change this though
 simulate_takeoff_and_landing(master, start_time, takeoff_thrust, ramp_duration)
 #simulate_takeoff_and_landing(master, start_time) # this is the default function. you can use this if you want. 
