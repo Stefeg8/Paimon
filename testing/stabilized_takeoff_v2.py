@@ -59,7 +59,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
                                  target_yaw=0.0):
     print("Starting advanced position-stabilized hover...")
     _, _, initial_z, *_ = get_local_position(master)
-    target_z = initial_z - 1.0
+    target_z = initial_z - 2.0
     # Outer PID 
     pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
     pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
