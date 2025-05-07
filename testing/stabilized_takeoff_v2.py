@@ -90,6 +90,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         # pos velo setpoint
         sp_vx = pid_pos_x.compute(target_x - x, dt)
         sp_vy = pid_pos_y.compute(target_y - y, dt)
+        #sp_vz = pid_pos_z.compute(z - target_z, dt) # use this maybe
         sp_vz = pid_pos_z.compute(target_z - z, dt)
 
         # clamp velocity setpoints
