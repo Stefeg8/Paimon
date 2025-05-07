@@ -60,15 +60,18 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
     print("Starting advanced position-stabilized hover...")
     _, _, initial_z, *_ = get_local_position(master)
     target_z = initial_z - 2.0
+    print(f"initial_z: {initial_z}")
+    print(f"target_z: {target_z}")
     # Outer PID 
     pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
     pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
-    pid_pos_z = PID(kp=1.0, ki=0.1, kd=0.3)
+    pid_pos_z = PID(kp=0.8, ki=0.1, kd=0.2)
 
     # Inner PID 
     pid_vel_x = PID(kp=1.0, ki=0.0, kd=0.2)
     pid_vel_y = PID(kp=1.0, ki=0.0, kd=0.2)
-    pid_vel_z = PID(kp=0.8, ki=0.05, kd=0.2)
+    pid_vel_z = PID(kp=0.5, ki=0.05, kd=0.1)
+    #pid_vel_z = PID(kp=0.8, ki=0.05, kd=0.2)
 
     pid_yaw = PID(kp=1.0, ki=0.0, kd=0.1)
 
@@ -100,7 +103,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
 
         pitch_command = pid_vel_x.compute(sp_vx - vx, dt)
         roll_command = pid_vel_y.compute(sp_vy - vy, dt)
-        thrust = 0.5 + pid_vel_z.compute(sp_vz - vz, dt)
+        thrust = 0.45 + pid_vel_z.compute(sp_vz - vz, dt)
 
         error_yaw = (target_yaw - yaw + math.pi) % (2 * math.pi) - math.pi
         yaw_rate = pid_yaw.compute(error_yaw, dt)
@@ -108,7 +111,11 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         # Clamp
         roll_command = max(min(roll_command, 0.087), -0.087)  # ~5°
         pitch_command = max(min(pitch_command, 0.087), -0.087)
-        thrust = max(min(thrust, 0.6), 0.45)
+        #mass = 1
+        #gravity = 9.81
+        #desired_thrust = mass * (gravity + pid_pos_z.compute(target_z - z, dt)) / gravity
+        #thrust = max(min(desired_thrust, 1.0), 0.45)  # Adjust for a more accurate thrust range
+        thrust = max(min(thrust, 0.55), 0.5)
         yaw_rate = max(min(yaw_rate, 1.0), -1.0)
 
         q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
