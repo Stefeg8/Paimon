@@ -152,7 +152,7 @@ def get_local_position(master):
     return msg.x, msg.y, msg.z  # in meters, z is negative up
 
 def simulate_hover_forward_hover_land(master, start_time,
-                                      takeoff_thrust=0.6,
+                                      takeoff_thrust=0.55,
                                       ramp_duration=3,
                                       hover_duration=5,
                                       forward_duration=5,
