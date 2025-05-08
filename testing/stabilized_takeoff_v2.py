@@ -12,6 +12,7 @@ class PID:
 
     def compute(self, error, dt):
         self.integral += error * dt
+        self.integral = max(min(self.integral, 5), -5)
         derivative = (error - self.prev_error) / dt if dt > 0 else 0
         output = self.kp * error + self.ki * self.integral + self.kd * derivative
         self.prev_error = error
@@ -22,6 +23,7 @@ import math
 def euler_to_quaternion(roll, pitch, yaw):
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
     cp = math.cos(pitch * 0.5)
     sp = math.sin(pitch * 0.5)
     cr = math.cos(roll * 0.5)
@@ -58,18 +60,27 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
                                  target_x=0.0, target_y=0.0,
                                  target_yaw=0.0):
     print("Starting advanced position-stabilized hover...")
-    _, _, initial_z, *_ = get_local_position(master)
-    target_z = initial_z - 2.0
-    print(f"initial_z: {initial_z}")
+    #_, _, initial_z, *_ = get_local_position(master)
+    #target_z = initial_z - 2.0
+    x0, y0, z0, *_ = get_local_position(master)
+    target_x = x0
+    target_y = y0
+    target_z = z0 - 2.0
+
+    print(f"initial_z: {z0}")
     print(f"target_z: {target_z}")
     # Outer PID 
-    pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
-    pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
+    #pid_pos_x = PID(kp=1.5, ki=0.0, kd=0.3)
+    #pid_pos_y = PID(kp=1.5, ki=0.0, kd=0.3)
+    pid_pos_x = PID(kp=2.5, ki=0.1, kd=0.5)
+    pid_pos_y = PID(kp=2.5, ki=0.1, kd=0.5) 
     pid_pos_z = PID(kp=0.8, ki=0.1, kd=0.2)
 
     # Inner PID 
-    pid_vel_x = PID(kp=1.0, ki=0.0, kd=0.2)
-    pid_vel_y = PID(kp=1.0, ki=0.0, kd=0.2)
+    pid_vel_x = PID(kp=2.0, ki=0.0, kd=0.4)
+    pid_vel_y = PID(kp=2.0, ki=0.0, kd=0.4)
+    #pid_vel_x = PID(kp=1.0, ki=0.0, kd=0.2)
+    #pid_vel_y = PID(kp=1.0, ki=0.0, kd=0.2)
     pid_vel_z = PID(kp=0.5, ki=0.05, kd=0.1)
     #pid_vel_z = PID(kp=0.8, ki=0.05, kd=0.2)
 
@@ -103,19 +114,22 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
 
         pitch_command = pid_vel_x.compute(sp_vx - vx, dt)
         roll_command = pid_vel_y.compute(sp_vy - vy, dt)
+        
         thrust = 0.45 + pid_vel_z.compute(sp_vz - vz, dt)
 
         error_yaw = (target_yaw - yaw + math.pi) % (2 * math.pi) - math.pi
         yaw_rate = pid_yaw.compute(error_yaw, dt)
 
         # Clamp
-        roll_command = max(min(roll_command, 0.087), -0.087)  # ~5°
-        pitch_command = max(min(pitch_command, 0.087), -0.087)
+        roll_command = max(min(roll_command, 0.17), -0.17)
+        pitch_command = max(min(pitch_command, 0.17), -0.17)
+        #roll_command = max(min(roll_command, 0.087), -0.087)  # ~5°
+        #pitch_command = max(min(pitch_command, 0.087), -0.087)
         #mass = 1
         #gravity = 9.81
         #desired_thrust = mass * (gravity + pid_pos_z.compute(target_z - z, dt)) / gravity
         #thrust = max(min(desired_thrust, 1.0), 0.45)  # Adjust for a more accurate thrust range
-        thrust = max(min(thrust, 0.55), 0.5)
+        thrust = max(min(thrust, 0.56), 0.49)
         yaw_rate = max(min(yaw_rate, 1.0), -1.0)
 
         q = euler_to_quaternion(roll_command, pitch_command, target_yaw)
@@ -224,6 +238,31 @@ while True:
     if pos is not None:
         print("Valid local position received.")
         break
+    
+master.mav.request_data_stream_send(master.target_system, master.target_component,
+    mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 10, 1)  # attitude
+master.mav.request_data_stream_send(master.target_system, master.target_component,
+    mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 10, 1)  # local position NED
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+    0,
+    mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+    100000,  # microseconds (10Hz)
+    0, 0, 0, 0, 0
+)
+
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+    0,
+    mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
+    100000,
+    0, 0, 0, 0, 0
+)
+
 
 # Start sending heartbeats in the background
 heartbeat_thread = threading.Thread(target=send_heartbeat, args=(master,), daemon=True)
@@ -273,7 +312,7 @@ print("OFFBOARD mode set")
 
 # Takeoff simulation
 # Pass takeoff_thrust as the 3rd argument to get a custom thrust value. Default is 0.6 in the function
-takeoff_thrust = 0.52 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
+takeoff_thrust = 0.53 # Ramp up slowly from 0.5 to 0.65 in your testing. You can adjust this value as needed. do 0.02 increments ig
 ramp_duration = 10 # Adjust this value as needed. its how long it takes for the drone to go up from 0 thrust to takeoff thrust. don't really need to change this though
 simulate_takeoff_and_landing(master, start_time, takeoff_thrust, ramp_duration)
 #simulate_takeoff_and_landing(master, start_time) # this is the default function. you can use this if you want. 
