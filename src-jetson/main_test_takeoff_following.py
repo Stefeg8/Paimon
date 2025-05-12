@@ -76,6 +76,7 @@ DETECTION_TTL = 0.5
 last_detection_time = 0.0   
 HOVER_THRUST = 0.52
 fallback_pos = None    # will store (x0, y0, z0) when we first lose the person
+initial_z = None
 
 
 class PID:
@@ -157,7 +158,7 @@ def maintain_offboard_mode(master):
     Runs at ~20 Hz.  If we’ve seen a person recently, replay
     last_quat/last_thrust; otherwise hold position at 2 m.
     """
-    global fallback_pos
+    global fallback_pos, initial_z
     while True:
         now = time.time()
         seen_recent = send_setpoint and (now - last_detection_time) <= DETECTION_TTL
@@ -172,7 +173,7 @@ def maintain_offboard_mode(master):
             if fallback_pos is None:
                 # capture exactly where you are now
                 x0, y0, z0, _, _, _ = get_local_position(master)
-                fallback_pos = (x0, y0, -2.0)  # z = -2 m target
+                fallback_pos = (x0, y0, initial_z-2.0)  # z = -2 m target
             x_t, y_t, z_t = fallback_pos
             TARGET_ALT = -2
             master.mav.set_position_target_local_ned_send(
@@ -400,6 +401,9 @@ def ramp_up_drone(master):
     steps = int(ramp_duration / 0.05) 
     thrust_values_up = [i * (takeoff_thrust / steps) for i in range(steps + 1)]
     thrust_values_down = list(reversed(thrust_values_up))
+    global initial_z
+    x, y, z = get_local_position(master)
+    initial_z = z
 
     # Ramp up
     print("ramping up")

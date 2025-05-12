@@ -1,7 +1,7 @@
 from pymavlink import mavutil
 import time
 import threading
-
+initial_z = 0
 class PID:
     def __init__(self, kp, ki, kd):
         self.kp = kp
@@ -152,9 +152,10 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
 
 def hold_pos(master, duration):
     now = time.time()
+    global initial_z
     end_time = now + duration
     x0, y0, z0, _, _, _ = get_local_position(master)
-    TARGET_ALT = -2
+    TARGET_ALT = initial_z-2
     while time.time() < end_time:
         master.mav.set_position_target_local_ned_send(
             int((now - start_time)*1000),
@@ -203,6 +204,9 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
     steps = int(ramp_duration / 0.05) 
     thrust_values_up = [i * (takeoff_thrust / steps) for i in range(steps + 1)]
     thrust_values_down = list(reversed(thrust_values_up))
+    x0, y0, z0, _, _, _ = get_local_position(master)
+    global initial_z
+    initial_z = z0
 
     # Ramp up
     print("ramping up")
