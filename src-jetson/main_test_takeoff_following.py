@@ -75,6 +75,8 @@ send_setpoint = False
 DETECTION_TTL = 0.5         
 last_detection_time = 0.0   
 HOVER_THRUST = 0.52
+fallback_pos = None    # will store (x0, y0, z0) when we first lose the person
+
 
 class PID:
     def __init__(self, kp, ki, kd):
@@ -150,8 +152,51 @@ def stable_body_rate_hover(master, start_time, duration):
         )
         time.sleep(0.05)
 
-# Function to continuously maintain OFFBOARD mode
 def maintain_offboard_mode(master):
+    """
+    Runs at ~20 Hz.  If we’ve seen a person recently, replay
+    last_quat/last_thrust; otherwise hold position at 2 m.
+    """
+    global fallback_pos
+    while True:
+        now = time.time()
+        seen_recent = send_setpoint and (now - last_detection_time) <= DETECTION_TTL
+        if seen_recent:
+            # Person in view → reset fallback and keep pointing at them
+            fallback_pos = None
+            with resource_lock:
+                dmc.set_attitude(master, last_quat, last_thrust)
+
+        else:
+            # No person → HOLD position at 2 m, zero velocity in x/y/z:
+            if fallback_pos is None:
+                # capture exactly where you are now
+                x0, y0, z0, _, _, _ = get_local_position(master)
+                fallback_pos = (x0, y0, -2.0)  # z = -2 m target
+            x_t, y_t, z_t = fallback_pos
+            TARGET_ALT = -2
+            master.mav.set_position_target_local_ned_send(
+                int((now - start_time)*1000),
+                master.target_system,
+                master.target_component,
+                mavutil.mavlink.MAV_FRAME_LOCAL_NED,
+                # mask: ignore vx,vy,vz, ax,ay,az, yaw, yaw_rate → use only x,y,z
+                0b0001111111000111,
+                # positions X (keep current), Y (keep current), Z = TARGET_ALT
+                x_t, y_t, z_t,
+                # velocities (ignored)
+                0, 0, 0,
+                # accelerations (ignored)
+                0, 0, 0,
+                # yaw & yaw_rate (ignored)
+                0, 0
+            )
+
+        time.sleep(0.05)
+
+
+# Function to continuously maintain OFFBOARD mode
+def maintain_offboard_mode1(master):
     while True:
         if send_setpoint and last_quat is not None:
             # Use the lock to ensure thread-safe access to shared resources
