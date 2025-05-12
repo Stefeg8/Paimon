@@ -72,6 +72,83 @@ time.sleep(2)
 last_quat = None
 last_thrust = None
 send_setpoint = False  
+DETECTION_TTL = 0.5         
+last_detection_time = 0.0   
+HOVER_THRUST = 0.52
+
+class PID:
+    def __init__(self, kp, ki, kd):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.prev_error = 0
+        self.integral = 0
+
+    def compute(self, error, dt):
+        self.integral += error * dt
+        self.integral = max(min(self.integral, 5), -5)
+        derivative = (error - self.prev_error) / dt if dt > 0 else 0
+        output = self.kp * error + self.ki * self.integral + self.kd * derivative
+        self.prev_error = error
+        return output
+    
+def get_local_position(master, timeout=0.5):
+    global _last_known_local_position
+    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=True, timeout=timeout)
+    if msg is not None:
+        _last_known_local_position = [msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz]
+        print("DEBUG msg:", msg)
+        print("DEBUG fields:", msg.to_dict().keys())
+    else:
+        print("Warning: No LOCAL_POSITION_NED received. Using last known position.")
+    return _last_known_local_position
+
+def stable_body_rate_hover(master, start_time, duration):
+    """
+    Pure body‐rate + thrust hover (20 Hz) for `duration` seconds,
+    using the same cascaded z‐PID we discussed earlier.
+    """
+    pid_pos_z = PID(kp=0.8, ki=0.1, kd=0.2)
+    pid_vel_z = PID(kp=0.5, ki=0.05, kd=0.1)
+    last_t = time.time()
+    end_t = last_t + duration
+
+    # assume we already have a target_z from ramp_up (or pass it in as needed)
+    _, _, z0, _, _, _ = get_local_position(master)
+    target_z = z0  # hold exactly where we are at start
+
+    while time.time() < end_t:
+        now = time.time()
+        dt = now - last_t
+        if dt <= 0:
+            continue
+        last_t = now
+
+        x,y,z, vx,vy,vz = get_local_position(master)
+
+        # outer loop → vz setpoint
+        err_z = z - target_z
+        sp_vz = pid_pos_z.compute(err_z, dt)
+        sp_vz = max(min(sp_vz, 1.0), -1.0)
+
+        # inner loop → thrust offset
+        d_thrust = pid_vel_z.compute(sp_vz - vz, dt)
+
+        thrust = HOVER_THRUST + d_thrust
+        thrust = max(min(thrust, HOVER_THRUST+0.1), HOVER_THRUST-0.1)
+
+        # send zero‐rate + thrust
+        master.mav.set_attitude_target_send(
+            int((now - start_time)*1000),
+            master.target_system, master.target_component,
+            type_mask=0b00010000,    # ignore quaternion, use body_rates & thrust
+            q=[1,0,0,0],
+            body_roll_rate=0.0,
+            body_pitch_rate=0.0,
+            body_yaw_rate=0.0,
+            thrust=thrust
+        )
+        time.sleep(0.05)
 
 # Function to continuously maintain OFFBOARD mode
 def maintain_offboard_mode(master):
@@ -80,6 +157,14 @@ def maintain_offboard_mode(master):
             # Use the lock to ensure thread-safe access to shared resources
             with resource_lock:
                 dmc.set_attitude(master, last_quat, last_thrust)
+        now = time.time()
+        if send_setpoint:
+            with resource_lock:
+                # if it’s been too long since a detection → fallback hover
+                if now - last_detection_time > DETECTION_TTL:
+                    stable_body_rate_hover(master, start_time, duration=0.5)
+                else:
+                    dmc.set_attitude(master, last_quat, last_thrust)
         time.sleep(0.05)  # Send setpoint every 50ms (20 Hz)
 
 def read_frame():
@@ -98,6 +183,8 @@ def pipeline(frame):
         if int(class_id) < len(class_names_list) and class_names_list[int(class_id)] == "person":
             center_x = (x_min + x_max) / 2
             center_y = (y_min + y_max) / 2
+            global last_detection_time
+            last_detection_time = time.time()
             directions(center_x, center_y)
 
 
@@ -202,6 +289,39 @@ def ramp_up_drone(master):
     )
     print("drone armed")
     time.sleep(3)
+    # Start streaming position data 
+    master.mav.request_data_stream_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+        10,  # 10 Hz update rate
+        1    # start stream
+    )
+        
+    master.mav.request_data_stream_send(master.target_system, master.target_component,
+        mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 10, 1)  # attitude
+    master.mav.request_data_stream_send(master.target_system, master.target_component,
+        mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 10, 1)  # local position NED
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+        0,
+        mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+        100000,  # microseconds (10Hz)
+        0, 0, 0, 0, 0
+    )
+
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+        0,
+        mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
+        100000,
+        0, 0, 0, 0, 0
+    )
+
     print("sending pre-offboard attitude targets")
     for _ in range(20):
         master.mav.set_attitude_target_send(
@@ -274,6 +394,8 @@ def ramp_up_drone(master):
             thrust=0.54
         )
         time.sleep(0.05)
+    global send_setpoint
+    send_setpoint = True
     start_offboard_thread(master)
     
 

@@ -105,7 +105,9 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         sp_vx = pid_pos_x.compute(target_x - x, dt)
         sp_vy = pid_pos_y.compute(target_y - y, dt)
         #sp_vz = pid_pos_z.compute(z - target_z, dt) # use this maybe
-        sp_vz = pid_pos_z.compute(target_z - z, dt)
+        error_z = z - target_z     # positive when you’re below the target
+        sp_vz   = pid_pos_z.compute(error_z, dt)
+        #sp_vz = pid_pos_z.compute(target_z - z, dt)
 
         # clamp velocity setpoints
         sp_vx = max(min(sp_vx, 1.0), -1.0)
@@ -115,7 +117,7 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
         pitch_command = pid_vel_x.compute(sp_vx - vx, dt)
         roll_command = pid_vel_y.compute(sp_vy - vy, dt)
         
-        thrust = 0.45 + pid_vel_z.compute(sp_vz - vz, dt)
+        thrust = 0.52 + pid_vel_z.compute(sp_vz - vz, dt)
 
         error_yaw = (target_yaw - yaw + math.pi) % (2 * math.pi) - math.pi
         yaw_rate = pid_yaw.compute(error_yaw, dt)
@@ -138,10 +140,10 @@ def stabilize_position_hover_v2(master, start_time, hold_duration,
             int((time.time() - start_time) * 1000),
             master.target_system,
             master.target_component,
-            type_mask=0b00000100,
-            q=q,
-            body_roll_rate=0,
-            body_pitch_rate=0,
+            type_mask=0b00010000,
+            q=[1, 0, 0, 0],
+            body_roll_rate=roll_command,
+            body_pitch_rate=pitch_command,
             body_yaw_rate=yaw_rate,
             thrust=thrust
         )
