@@ -174,6 +174,24 @@ def hold_pos(master, duration):
             0, 0
         )
         time.sleep(0.05)
+        
+def move_forward(master, duration):
+    now = time.time()
+    end_time = now + duration
+    while time.time() < end_time:
+        master.mav.set_position_target_local_ned_send(
+            int((now - start_time)*1000),
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_FRAME_BODY_NED,   # ← body-fixed axes
+            0b0001111111000111,                   # ignore pos & accel & yaw, use velocity
+            0, 0, 0,                              # pos (ignored)
+            1.0, 0, 0,                            # vx=+1 m/s forward, vy=0, vz=0
+            0, 0, 0,                              # accel (ignored)
+            0, 0                                 # yaw (ignored)
+        )
+        time.sleep(0.05)
+
 
 def send_heartbeat(master):
     while True:
@@ -227,6 +245,8 @@ def simulate_takeoff_and_landing(master, start_time, takeoff_thrust=0.6, ramp_du
     
     #stabilize_position_hover_v2(master, start_time, hold_duration)
 
+    hold_pos(master, hold_duration)
+    move_forward(master,hold_duration-2)
     hold_pos(master, hold_duration)
 
     # Ramp down
